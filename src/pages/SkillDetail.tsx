@@ -3,7 +3,16 @@ import { Link, useParams } from "react-router-dom";
 import { Copy, FileText } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ballotItems, findBallotItemByPath } from "@/lib/ballotItems";
-import { toast } from "@/components/ui/sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { VoteChoice } from "@/lib/ballotItems";
 
 const statusColor = (s: string) => {
@@ -58,6 +67,7 @@ const SkillDetail = () => {
 
   const [copied, setCopied] = useState(false);
   const [vote, setVote] = useState<VoteChoice | null | undefined>(undefined);
+  const [pendingVote, setPendingVote] = useState<VoteChoice | null>(null);
   const voteStorageKey = `better-gov:vote:${item.jurisdictionSlug}:${item.slug}`;
   const sharePath = `/${item.jurisdictionSlug}/${item.slug}`;
 
@@ -86,18 +96,43 @@ const SkillDetail = () => {
   };
 
   const handleVote = (choice: VoteChoice) => {
-    const nextLabel = choice.charAt(0).toUpperCase() + choice.slice(1);
-    const verb = vote && vote !== choice ? "updated" : "recorded";
-
-    setVote(choice);
-    toast(`${nextLabel} vote ${verb}`, {
-      description: `${item.title}`,
-    });
+    setPendingVote(choice);
   };
+
+  const confirmVote = () => {
+    if (!pendingVote) return;
+    setVote(pendingVote);
+    setPendingVote(null);
+  };
+
+  const pendingVoteLabel = pendingVote
+    ? pendingVote.charAt(0).toUpperCase() + pendingVote.slice(1)
+    : "";
 
   return (
     <div className="min-h-screen bg-background text-foreground font-mono">
       <Navbar />
+      <AlertDialog open={pendingVote !== null} onOpenChange={(open) => !open && setPendingVote(null)}>
+        <AlertDialogContent className="border-border bg-background text-foreground">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-mono text-base uppercase tracking-[0.16em]">
+              Confirm choice
+            </AlertDialogTitle>
+            <AlertDialogDescription className="leading-relaxed text-muted-foreground">
+              Record <span className="text-foreground">{pendingVoteLabel}</span> for{" "}
+              <span className="text-foreground">{item.title}</span>?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-border bg-secondary/50 text-foreground hover:bg-secondary">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction className="bg-foreground text-background hover:bg-foreground/90" onClick={confirmVote}>
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="max-w-5xl mx-auto px-6 pt-12 pb-16">
         {/* Breadcrumb */}
         <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
