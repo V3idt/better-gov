@@ -29,10 +29,17 @@ Install dependencies:
 npm install
 ```
 
-Start the dev server:
+Start the full app with the API and Vite frontend:
 
 ```bash
 npm run dev
+```
+
+If you want to run them separately:
+
+```bash
+npm run dev:api
+npm run dev:web
 ```
 
 Create a production build:
@@ -41,10 +48,17 @@ Create a production build:
 npm run build
 ```
 
+Run the server database tests:
+
+```bash
+npm run test:server
+```
+
 ## Notes
 
-- The current ballot data is static and lives in [src/lib/ballotItems.ts](/home/v3idt/Documents/better-gov/src/lib/ballotItems.ts).
-- The vote flow now resolves to a canonical `person_id` and stores votes per policy/person through a centralized voting store instead of a per-device browser key.
+- The current ballot data is static and lives in [`src/lib/ballotItems.ts`](src/lib/ballotItems.ts).
+- The vote flow now resolves to a canonical `person_id` and stores votes through a Bun + SQLite backend with a unique `(policy_id, person_id)` constraint.
+- The API server seeds the ballot list into SQLite on startup and keeps a demo session available for the current prototype.
 - The `History` section currently uses mocked closed-vote data.
 
 ## Direction
