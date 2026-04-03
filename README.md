@@ -44,7 +44,7 @@ npm run build
 ## Notes
 
 - The current ballot data is static and lives in [src/lib/ballotItems.ts](/home/v3idt/Documents/better-gov/src/lib/ballotItems.ts).
-- The current vote action stores the selected vote locally in the browser for demo purposes.
+- The vote flow now resolves to a canonical `person_id` and stores votes per policy/person through a centralized voting store instead of a per-device browser key.
 - The `History` section currently uses mocked closed-vote data.
 
 ## Direction
