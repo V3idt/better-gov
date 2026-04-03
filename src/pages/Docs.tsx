@@ -2,107 +2,97 @@ import Navbar from "@/components/Navbar";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-type DocTab = "overview" | "cli" | "faq";
+type DocTab = "overview" | "process" | "faq";
 
 const commandBlockClass =
   "mb-4 rounded-lg bg-secondary/50 px-5 py-4 font-mono text-sm leading-relaxed text-foreground break-all whitespace-pre-wrap";
 
 const overviewContent = (
   <>
-    <h1 className="text-3xl font-semibold text-foreground mb-4">Documentation</h1>
+    <h1 className="text-3xl font-semibold text-foreground mb-4">How Better Gov Works</h1>
     <p className="text-muted-foreground mb-10">
-      Learn how to discover, install, and use skills with your AI agents.
+      Better Gov is a direct-governance platform where public decisions become ballot items that people can read, review, and vote on.
     </p>
 
     <p className="text-muted-foreground mb-10">
-      The <code className="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">skills</code> CLI that powers this leaderboard is open source at{" "}
-      <a href="https://github.com/vercel-labs/skills" className="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">
-        github.com/vercel-labs/skills
-      </a>.
+      Recommended umbrella term: <code className="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">ballot item</code>. It is broad enough to cover laws, budgets, permits, appointments, infrastructure plans, service changes, and rights-impacting rules.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">What are skills?</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">What is a ballot item?</h2>
     <p className="text-muted-foreground mb-10">
-      Skills are reusable capabilities for AI agents. They provide procedural knowledge that helps agents accomplish specific tasks more effectively. Think of them as plugins or extensions that enhance what your AI agent can do.
+      A ballot item is any public decision that should be visible, understandable, and directly voteable by the people affected by it.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">Getting started</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">What should be included?</h2>
     <p className="text-muted-foreground mb-4">
-      To install a skill, use the <code className="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">skills</code> CLI:
+      Start broad and avoid artificial narrowing. Better Gov should include:
     </p>
     <div className={commandBlockClass}>
-      npx skills add vercel-labs/agent-skills
+      budgets / taxes / procurement / housing / zoning / transit / schools /
+      health / utilities / labor / energy / environment / policing / courts /
+      privacy / digital rights / welfare / major appointments / local projects
     </div>
     <p className="text-muted-foreground mb-10">
-      This will install the skill and make it available to your AI agent.
+      The default stance should be inclusion. If a decision changes people's lives, money, rights, access, land, or services, it belongs on the ballot.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">How skills are ranked</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">How people use the platform</h2>
     <p className="text-muted-foreground mb-4">
-      The skills leaderboard ranks skills based on anonymous telemetry data collected from the <code className="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">skills</code> CLI. When users install skills, aggregated usage data helps surface the most popular and useful skills in the ecosystem.
+      People browse open ballot items, read the tl;dr, inspect the full brief, check review flags, and vote directly on the detail page.
     </p>
     <p className="text-muted-foreground mb-10">
-      This telemetry is completely anonymous and only tracks which skills are being installed—no personal information or usage patterns are collected.
+      Each item should make the stakes, tradeoffs, implementation risk, and closing date immediately obvious.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">Browse skills</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">Browse the ballot</h2>
     <p className="text-muted-foreground mb-10">
-      Visit the <Link to="/" className="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">homepage</Link> to browse the skills leaderboard and discover new capabilities for your agents.
+      Visit the <Link to="/" className="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">homepage</Link> to browse current ballot items and open the ones you care about.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">How are you securing skills?</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">Why review matters</h2>
     <p className="text-muted-foreground mb-4">
-      There are routine security audits that assess skills and their contents for malicious content. To report security issues, please visit{" "}
-      <a href="https://security.vercel.com/" className="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">
-        security.vercel.com
-      </a>.
+      Direct voting still needs strong review. Rights impact, fiscal realism, and delivery risk should be visible beside every item so the public can vote with context.
     </p>
     <p className="text-muted-foreground">
-      We do our best to maintain a safe ecosystem, but we cannot guarantee the quality or security of every skill listed on skills.sh. We encourage you to review skills before installing and use your own judgment.
+      Review should inform the vote, not replace it.
     </p>
   </>
 );
 
-const cliContent = (
+const processContent = (
   <>
-    <h1 className="text-3xl font-semibold text-foreground mb-4">CLI Reference</h1>
+    <h1 className="text-3xl font-semibold text-foreground mb-4">Posting Process</h1>
     <p className="text-muted-foreground mb-10">
-      The <code className="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">skills</code> CLI is the primary way to install and manage skills for your AI agents.
+      Every ballot item should follow a consistent pipeline before and during voting.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">Installation</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">Minimum structure</h2>
     <p className="text-muted-foreground mb-4">
-      The CLI can be run directly with npx—no installation required:
+      Each ballot item should include a short brief, a full brief, visible review checks, and a clear closing date:
     </p>
     <div className={`${commandBlockClass} mb-10`}>
-      npx skills add &lt;skill-name&gt;
+      title / category / jurisdiction / tl;dr / full brief / review checks /
+      vote options / closing date / public history
     </div>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">Basic usage</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">Recommended flow</h2>
     <p className="text-muted-foreground mb-4">
-      Install a skill by specifying the owner and skill name:
+      A pragmatic first version can work like this:
     </p>
     <div className={commandBlockClass}>
-      npx skills add vercel-labs/agent-skills
+      draft item / publish tl;dr / attach full brief / run review checks /
+      open voting / close vote / publish outcome and implementation status
     </div>
     <p className="text-muted-foreground mb-10">
-      This downloads the skill and configures it for use with your AI agent.
+      That keeps the experience legible while still supporting serious public decisions.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">Examples</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">What to optimize for</h2>
     <p className="text-muted-foreground mb-4">
-      Install the agent skills collection:
-    </p>
-    <div className={`${commandBlockClass} mb-10`}>
-      npx skills add vercel-labs/agent-skills
-    </div>
-
-    <h2 className="text-xl font-semibold text-foreground mb-4">Telemetry</h2>
-    <p className="text-muted-foreground mb-4">
-      By default, the CLI collects anonymous telemetry data to help rank skills on the leaderboard. This data includes the skill name, skill files, and a timestamp—no personal or device information is collected.
+      The system should optimize for clarity, breadth, and low information loss between public intent and public action.
     </p>
     <p className="text-muted-foreground">
-      To opt out, set the <code className="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">DISABLE_TELEMETRY=1</code> environment variable.
+      The point is not just to count votes. The point is to preserve the actual will of the people all the way through decision-making.
     </p>
   </>
 );
@@ -111,61 +101,56 @@ const faqContent = (
   <>
     <h1 className="text-3xl font-semibold text-foreground mb-4">Frequently Asked Questions</h1>
     <p className="text-muted-foreground mb-10">
-      Common questions about the skills ecosystem.
+      Common questions about the Better Gov model.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">What are skills?</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">What should these items be called?</h2>
     <p className="text-muted-foreground mb-10">
-      Skills are reusable capabilities for AI agents. They provide procedural knowledge that helps agents accomplish specific tasks more effectively. Skills can include code generation patterns, domain expertise, tool integrations, and more.
+      Recommended default: ballot items. Good alternatives are public decisions or civic measures, but ballot item is the clearest umbrella term for now.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">How do I install a skill?</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">What belongs on the ballot?</h2>
     <p className="text-muted-foreground mb-10">
-      Use the skills CLI: npx skills add &lt;owner&gt;/&lt;skill-name&gt;. For example, npx skills add vercel-labs/agent-skills installs the agent skills collection.
+      Anything that materially changes rights, money, land use, service levels, infrastructure, enforcement, access, or long-term public obligations should be eligible.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">Which AI agents support skills?</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">Why not leave this to representatives?</h2>
     <p className="text-muted-foreground mb-10">
-      Skills work with popular AI coding agents including Claude Code, Cursor, Windsurf, and others. Check each skill's documentation for specific compatibility information.
+      The premise of Better Gov is that representative layers can distort, delay, or dilute public intent. The platform tries to reduce that loss.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">How is the leaderboard ranked?</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">Do review checks replace voting?</h2>
     <p className="text-muted-foreground mb-10">
-      The skills leaderboard is powered by anonymous telemetry data from the skills CLI. When users install skills, aggregated installation counts help surface the most popular skills. No personal or device information is collected—only aggregate skill installation metrics.
+      No. Review is context for the public, not a veto layer over the public.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">How do I get my skill listed on the leaderboard?</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">Should the platform start narrow?</h2>
     <p className="text-muted-foreground mb-10">
-      Skills appear on the leaderboard automatically through anonymous telemetry when users run npx skills add &lt;owner/repo&gt;. Once your skill is installed by users, it will be tracked and appear in the rankings based on its installation count.
+      No. Start wide in theory, then phase rollout in practice. Narrow scope too early and you reproduce the same gatekeeping problem in a different interface.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">Is any personal data collected?</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">How should the detail page feel?</h2>
     <p className="text-muted-foreground mb-10">
-      No. The telemetry is completely anonymous and only tracks aggregate skill installation counts. No personal information, usage patterns, or identifying data is collected or stored.
+      Immediate. One screen should tell the user what the item does, what the tradeoffs are, what reviewers flagged, and let them vote without friction.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">How do I create my own skill?</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">What comes after the vote?</h2>
     <p className="text-muted-foreground mb-10">
-      Skills are hosted in GitHub repositories. Create a repository with a skill definition file and a README explaining how to use the skill. See existing popular skills for examples of the structure and format.
-    </p>
-
-    <h2 className="text-xl font-semibold text-foreground mb-4">Can I use skills with any AI agent?</h2>
-    <p className="text-muted-foreground">
-      Skills are designed to work with AI coding agents that support the skills protocol. Currently, popular agents like Claude Code, Cursor, and Windsurf have built-in support. Check your agent's documentation for skills compatibility.
+      The outcome should flow into implementation tracking so people can see whether the decision they voted for is actually being carried out.
     </p>
   </>
 );
 
 const tabs: { id: DocTab; label: string }[] = [
   { id: "overview", label: "Overview" },
-  { id: "cli", label: "CLI" },
+  { id: "process", label: "Process" },
   { id: "faq", label: "FAQ" },
 ];
 
 const Docs = () => {
   const [activeTab, setActiveTab] = useState<DocTab>("overview");
 
-  const content = activeTab === "overview" ? overviewContent : activeTab === "cli" ? cliContent : faqContent;
+  const content = activeTab === "overview" ? overviewContent : activeTab === "process" ? processContent : faqContent;
 
   return (
     <div className="min-h-screen bg-background text-foreground font-mono">

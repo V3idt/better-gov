@@ -16,11 +16,11 @@ const Index = () => {
           <div>
             <SkillsLogo />
             <p className="text-xs tracking-[0.25em] uppercase text-muted-foreground mt-4 mb-10">
-              The Open Agent Skills Ecosystem
+              Direct Governance For Everyday Public Decisions
             </p>
 
             <h3 className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
-              Try it now
+              Naming
             </h3>
             <CommandInput />
           </div>
@@ -28,7 +28,7 @@ const Index = () => {
           {/* Right: Description */}
           <div className="pt-2">
             <p className="text-xl md:text-2xl leading-relaxed text-muted-foreground font-light">
-              Skills are reusable capabilities for AI agents. Install them with a single command to enhance your agents with access to procedural knowledge.
+              Better Gov turns policy, spending, infrastructure, and public-service changes into ballot items that people can directly vote on instead of losing intent inside layers of representation.
             </p>
           </div>
         </div>
@@ -38,13 +38,16 @@ const Index = () => {
           <div />
           <div>
             <h3 className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-4">
-              Available for these agents
+              What should be voteable
             </h3>
             <AgentIcons />
+            <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+              Start wide: budgets, taxes, housing, transit, schools, health, energy, utilities, labor, privacy, safety, procurement, zoning, and major appointments.
+            </p>
           </div>
         </div>
 
-        {/* Leaderboard */}
+        {/* Ballot list */}
         <LeaderboardTable />
       </div>
     </div>

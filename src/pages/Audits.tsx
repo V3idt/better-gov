@@ -1,37 +1,12 @@
 import Navbar from "@/components/Navbar";
 import { Link } from "react-router-dom";
+import { ballotItems, getBallotItemPath } from "@/lib/ballotItems";
+import type { ReviewStatus } from "@/lib/ballotItems";
 
-type AuditEntry = {
-  rank: number;
-  name: string;
-  repo: string;
-  gen: "Safe";
-  socket: "0 alerts";
-  snyk: "Low Risk" | "Med Risk" | "Critical";
-};
-
-const audits: AuditEntry[] = [
-  { rank: 1, name: "find-skills", repo: "vercel-labs/skills", gen: "Safe", socket: "0 alerts", snyk: "Med Risk" },
-  { rank: 2, name: "vercel-react-best-practices", repo: "vercel-labs/agent-skills", gen: "Safe", socket: "0 alerts", snyk: "Low Risk" },
-  { rank: 3, name: "frontend-design", repo: "anthropics/skills", gen: "Safe", socket: "0 alerts", snyk: "Low Risk" },
-  { rank: 4, name: "web-design-guidelines", repo: "vercel-labs/agent-skills", gen: "Safe", socket: "0 alerts", snyk: "Med Risk" },
-  { rank: 5, name: "remotion-best-practices", repo: "remotion-dev/skills", gen: "Safe", socket: "0 alerts", snyk: "Med Risk" },
-  { rank: 6, name: "azure-ai", repo: "microsoft/github-copilot-for-azure", gen: "Safe", socket: "0 alerts", snyk: "Low Risk" },
-  { rank: 7, name: "azure-deploy", repo: "microsoft/github-copilot-for-azure", gen: "Safe", socket: "0 alerts", snyk: "Low Risk" },
-  { rank: 8, name: "azure-cost-optimization", repo: "microsoft/github-copilot-for-azure", gen: "Safe", socket: "0 alerts", snyk: "Low Risk" },
-  { rank: 9, name: "azure-storage", repo: "microsoft/github-copilot-for-azure", gen: "Safe", socket: "0 alerts", snyk: "Low Risk" },
-  { rank: 10, name: "azure-diagnostics", repo: "microsoft/github-copilot-for-azure", gen: "Safe", socket: "0 alerts", snyk: "Low Risk" },
-  { rank: 11, name: "entra-app-registration", repo: "microsoft/github-copilot-for-azure", gen: "Safe", socket: "0 alerts", snyk: "Low Risk" },
-  { rank: 12, name: "appinsights-instrumentation", repo: "microsoft/github-copilot-for-azure", gen: "Safe", socket: "0 alerts", snyk: "Low Risk" },
-  { rank: 13, name: "azure-compliance", repo: "microsoft/github-copilot-for-azure", gen: "Safe", socket: "0 alerts", snyk: "Low Risk" },
-  { rank: 14, name: "azure-prepare", repo: "microsoft/github-copilot-for-azure", gen: "Safe", socket: "0 alerts", snyk: "Critical" },
-  { rank: 15, name: "skill-creator", repo: "anthropics/skills", gen: "Safe", socket: "0 alerts", snyk: "Low Risk" },
-];
-
-const snykColor = (risk: string) => {
-  if (risk === "Low Risk") return "text-green-500";
-  if (risk === "Med Risk") return "text-amber-500";
-  if (risk === "Critical") return "text-red-500";
+const reviewColor = (status: ReviewStatus) => {
+  if (status === "PASS") return "text-green-500";
+  if (status === "WARN") return "text-amber-500";
+  if (status === "FAIL") return "text-red-500";
   return "text-muted-foreground";
 };
 
@@ -40,41 +15,41 @@ const Audits = () => {
     <div className="min-h-screen bg-background text-foreground font-mono">
       <Navbar />
       <div className="max-w-5xl mx-auto px-6 pt-12 pb-16">
-        <h1 className="text-3xl font-semibold text-foreground mb-4">Security Audits</h1>
+        <h1 className="text-3xl font-semibold text-foreground mb-4">Public Review Queue</h1>
         <p className="text-muted-foreground mb-10">
-          Combined security audit results from Gen Agent Trust Hub, Socket, and Snyk.
+          Every ballot item should be reviewed for rights impact, fiscal realism, and delivery risk before or during voting.
         </p>
 
         {/* Table Header */}
-        <div className="grid grid-cols-[40px_1fr_120px_120px_120px] text-xs text-muted-foreground uppercase tracking-wider mb-2 px-2">
+        <div className="mb-2 grid grid-cols-[32px_minmax(0,1fr)_72px_72px_72px] px-2 text-xs uppercase tracking-wider text-muted-foreground sm:grid-cols-[40px_minmax(0,1fr)_120px_120px_120px]">
           <span>#</span>
-          <span>Skill</span>
-          <span>Gen</span>
-          <span>Socket</span>
-          <span>Snyk</span>
+          <span>Ballot Item</span>
+          <span>Rights</span>
+          <span>Budget</span>
+          <span>Delivery</span>
         </div>
 
         {/* Rows */}
         <div className="divide-y divide-border">
-          {audits.map((a) => (
+          {ballotItems.map((item) => (
             <Link
-              key={`${a.rank}-${a.name}`}
-              to={`/${a.repo}/${a.name}`}
-              className="grid grid-cols-[40px_1fr_120px_120px_120px] items-center py-3.5 px-2 hover:bg-secondary/50 transition-colors cursor-pointer group"
+              key={`${item.rank}-${item.slug}`}
+              to={getBallotItemPath(item)}
+              className="grid grid-cols-[32px_minmax(0,1fr)_72px_72px_72px] items-start px-2 py-3.5 transition-colors hover:bg-secondary/50 group sm:grid-cols-[40px_minmax(0,1fr)_120px_120px_120px]"
             >
-              <span className="text-sm text-muted-foreground">{a.rank}</span>
+              <span className="text-sm text-muted-foreground">{item.rank}</span>
               <div className="flex flex-col min-w-0">
-                <span className="text-sm font-semibold text-foreground">{a.name}</span>
-                <span className="text-xs text-muted-foreground truncate">{a.repo}</span>
+                <span className="text-sm font-semibold text-foreground">{item.title}</span>
+                <span className="text-xs text-muted-foreground truncate">{item.jurisdiction} / {item.category}</span>
               </div>
-              <span className="text-xs font-mono text-green-500">
-                <span className="opacity-50 mr-1">▐▌▌</span>SAFE
+              <span className={`text-xs font-mono ${reviewColor(item.reviewChecks[0].status)}`}>
+                <span className="opacity-50 mr-1">▐▌▌</span>{item.reviewChecks[0].status}
               </span>
-              <span className="text-xs font-mono text-green-500">
-                <span className="opacity-50 mr-1">▐▌▌</span>0 ALERTS
+              <span className={`text-xs font-mono ${reviewColor(item.reviewChecks[1].status)}`}>
+                <span className="opacity-50 mr-1">▐▌▌</span>{item.reviewChecks[1].status}
               </span>
-              <span className={`text-xs font-mono ${snykColor(a.snyk)}`}>
-                <span className="opacity-50 mr-1">▐▌▌</span>{a.snyk.toUpperCase()}
+              <span className={`text-xs font-mono ${reviewColor(item.reviewChecks[2].status)}`}>
+                <span className="opacity-50 mr-1">▐▌▌</span>{item.reviewChecks[2].status}
               </span>
             </Link>
           ))}

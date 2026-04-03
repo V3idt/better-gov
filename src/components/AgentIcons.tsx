@@ -1,26 +1,36 @@
-import { Bot, Cpu, Code, Terminal, Sparkles, Zap, Brain } from "lucide-react";
+import {
+  Bus,
+  GraduationCap,
+  HeartPulse,
+  Landmark,
+  Leaf,
+  Shield,
+  Wallet,
+  Wifi,
+} from "lucide-react";
 
-const agents = [
-  { name: "AMP", icon: Sparkles },
-  { name: "Claude Code", icon: Terminal },
-  { name: "Cursor", icon: Code },
-  { name: "Codex", icon: Cpu },
-  { name: "Cline", icon: Bot },
-  { name: "Windsurf", icon: Zap },
-  { name: "Gemini", icon: Brain },
+const coverageAreas = [
+  { name: "Budget", icon: Wallet },
+  { name: "Housing", icon: Landmark },
+  { name: "Transit", icon: Bus },
+  { name: "Education", icon: GraduationCap },
+  { name: "Health", icon: HeartPulse },
+  { name: "Safety", icon: Shield },
+  { name: "Energy", icon: Leaf },
+  { name: "Connectivity", icon: Wifi },
 ];
 
 const AgentIcons = () => {
   return (
     <div className="overflow-hidden relative">
       <div className="flex gap-8 animate-marquee">
-        {[...agents, ...agents].map((agent, i) => (
+        {[...coverageAreas, ...coverageAreas].map((area, i) => (
           <div
-            key={`${agent.name}-${i}`}
+            key={`${area.name}-${i}`}
             className="flex items-center justify-center w-10 h-10 text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
-            title={agent.name}
+            title={area.name}
           >
-            <agent.icon className="w-6 h-6" />
+            <area.icon className="w-6 h-6" />
           </div>
         ))}
       </div>
