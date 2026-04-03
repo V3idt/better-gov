@@ -11,6 +11,30 @@ const statusColor = (s: string) => {
   return "text-red-500 bg-red-500/10";
 };
 
+const voteToneClass = (choice: VoteChoice, isActive: boolean) => {
+  if (choice === "approve") {
+    return isActive
+      ? "border-emerald-500/45 bg-emerald-500/14 text-emerald-100"
+      : "border-emerald-500/20 bg-emerald-500/6 text-emerald-200/85 hover:border-emerald-400/35 hover:bg-emerald-500/10";
+  }
+
+  if (choice === "reject") {
+    return isActive
+      ? "border-rose-500/45 bg-rose-500/14 text-rose-100"
+      : "border-rose-500/20 bg-rose-500/6 text-rose-200/85 hover:border-rose-400/35 hover:bg-rose-500/10";
+  }
+
+  return isActive
+    ? "border-zinc-400/45 bg-zinc-400/12 text-zinc-100"
+    : "border-zinc-400/20 bg-zinc-400/6 text-zinc-300/85 hover:border-zinc-300/35 hover:bg-zinc-400/10";
+};
+
+const savedVoteToneClass = (choice: VoteChoice) => {
+  if (choice === "approve") return "text-emerald-200/85";
+  if (choice === "reject") return "text-rose-200/85";
+  return "text-zinc-300/85";
+};
+
 const SkillDetail = () => {
   const { "*": path } = useParams();
   const item = useMemo(() => {
@@ -94,11 +118,10 @@ const SkillDetail = () => {
                     <button
                       key={choice}
                       onClick={() => setVote(choice)}
-                      className={`rounded border px-4 py-3 text-left text-sm uppercase tracking-[0.14em] transition-colors ${
-                        isActive
-                          ? "border-foreground bg-foreground text-background"
-                          : "border-border bg-secondary/50 text-foreground hover:border-muted-foreground"
-                      }`}
+                      className={`rounded border px-4 py-3 text-left text-sm uppercase tracking-[0.14em] transition-colors ${voteToneClass(
+                        choice,
+                        isActive,
+                      )}`}
                     >
                       {choice}
                     </button>
@@ -106,7 +129,7 @@ const SkillDetail = () => {
                 })}
               </div>
               {vote ? (
-                <p className="mt-4 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                <p className={`mt-4 text-xs uppercase tracking-[0.16em] ${savedVoteToneClass(vote)}`}>
                   Saved vote: {vote}
                 </p>
               ) : null}
