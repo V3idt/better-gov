@@ -1,13 +1,66 @@
 import Navbar from "@/components/Navbar";
-import { Link } from "react-router-dom";
-import { ballotItems, getBallotItemPath } from "@/lib/ballotItems";
-import type { ReviewStatus } from "@/lib/ballotItems";
 
-const reviewColor = (status: ReviewStatus) => {
-  if (status === "PASS") return "text-green-500";
-  if (status === "WARN") return "text-amber-500";
-  if (status === "FAIL") return "text-red-500";
-  return "text-muted-foreground";
+type ClosedVote = {
+  id: number;
+  title: string;
+  area: string;
+  closedOn: string;
+  outcome: "APPROVED" | "REJECTED";
+  support: string;
+  turnout: string;
+};
+
+const closedVotes: ClosedVote[] = [
+  {
+    id: 1,
+    title: "Spring Reading Week",
+    area: "Academic calendar",
+    closedOn: "March 03, 2026",
+    outcome: "APPROVED",
+    support: "74.8%",
+    turnout: "19.2K votes",
+  },
+  {
+    id: 2,
+    title: "Late Tuition Fee Relief",
+    area: "Tuition & fees",
+    closedOn: "February 24, 2026",
+    outcome: "APPROVED",
+    support: "68.1%",
+    turnout: "14.6K votes",
+  },
+  {
+    id: 3,
+    title: "Mandatory Attendance Policy",
+    area: "Academic policy",
+    closedOn: "February 08, 2026",
+    outcome: "REJECTED",
+    support: "38.7%",
+    turnout: "16.8K votes",
+  },
+  {
+    id: 4,
+    title: "Campus Wi-Fi Upgrade Fund",
+    area: "Technology",
+    closedOn: "January 29, 2026",
+    outcome: "APPROVED",
+    support: "81.3%",
+    turnout: "12.4K votes",
+  },
+  {
+    id: 5,
+    title: "Residence Hall Guest Curfew",
+    area: "Campus housing",
+    closedOn: "January 11, 2026",
+    outcome: "REJECTED",
+    support: "29.4%",
+    turnout: "10.7K votes",
+  },
+];
+
+const outcomeClass = (outcome: ClosedVote["outcome"]) => {
+  if (outcome === "APPROVED") return "text-green-500 bg-green-500/10";
+  return "text-red-500 bg-red-500/10";
 };
 
 const Audits = () => {
@@ -15,43 +68,38 @@ const Audits = () => {
     <div className="min-h-screen bg-background text-foreground font-mono">
       <Navbar />
       <div className="max-w-5xl mx-auto px-6 pt-12 pb-16">
-        <h1 className="text-3xl font-semibold text-foreground mb-4">Public Review Queue</h1>
-        <p className="text-muted-foreground mb-10">
-          Every ballot item should be reviewed for rights impact, fiscal realism, and delivery risk before or during voting.
+        <h1 className="mb-4 text-3xl font-semibold text-foreground">Vote History</h1>
+        <p className="mb-10 text-muted-foreground">
+          Closed votes and their final results.
         </p>
 
-        {/* Table Header */}
-        <div className="mb-2 grid grid-cols-[32px_minmax(0,1fr)_72px_72px_72px] px-2 text-xs uppercase tracking-wider text-muted-foreground sm:grid-cols-[40px_minmax(0,1fr)_120px_120px_120px]">
+        <div className="mb-2 grid grid-cols-[32px_minmax(0,1fr)_92px_96px] px-2 text-xs uppercase tracking-wider text-muted-foreground sm:grid-cols-[40px_minmax(0,1fr)_120px_120px]">
           <span>#</span>
           <span>Ballot Item</span>
-          <span>Rights</span>
-          <span>Budget</span>
-          <span>Delivery</span>
+          <span>Result</span>
+          <span className="text-right">Support</span>
         </div>
 
-        {/* Rows */}
         <div className="divide-y divide-border">
-          {ballotItems.map((item) => (
-            <Link
-              key={`${item.rank}-${item.slug}`}
-              to={getBallotItemPath(item)}
-              className="grid grid-cols-[32px_minmax(0,1fr)_72px_72px_72px] items-start px-2 py-3.5 transition-colors hover:bg-secondary/50 group sm:grid-cols-[40px_minmax(0,1fr)_120px_120px_120px]"
+          {closedVotes.map((vote) => (
+            <div
+              key={vote.id}
+              className="grid grid-cols-[32px_minmax(0,1fr)_92px_96px] items-start px-2 py-3.5 sm:grid-cols-[40px_minmax(0,1fr)_120px_120px]"
             >
-              <span className="text-sm text-muted-foreground">{item.rank}</span>
-              <div className="flex flex-col min-w-0">
-                <span className="text-sm font-semibold text-foreground">{item.title}</span>
-                <span className="text-xs text-muted-foreground truncate">{item.jurisdiction} / {item.category}</span>
+              <span className="text-sm text-muted-foreground">{vote.id}</span>
+              <div className="min-w-0">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <span className="break-words text-sm font-semibold text-foreground">{vote.title}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {vote.area} / Closed {vote.closedOn} / {vote.turnout}
+                  </span>
+                </div>
               </div>
-              <span className={`text-xs font-mono ${reviewColor(item.reviewChecks[0].status)}`}>
-                <span className="opacity-50 mr-1">▐▌▌</span>{item.reviewChecks[0].status}
+              <span className={`w-fit rounded px-2 py-0.5 text-xs font-mono ${outcomeClass(vote.outcome)}`}>
+                {vote.outcome}
               </span>
-              <span className={`text-xs font-mono ${reviewColor(item.reviewChecks[1].status)}`}>
-                <span className="opacity-50 mr-1">▐▌▌</span>{item.reviewChecks[1].status}
-              </span>
-              <span className={`text-xs font-mono ${reviewColor(item.reviewChecks[2].status)}`}>
-                <span className="opacity-50 mr-1">▐▌▌</span>{item.reviewChecks[2].status}
-              </span>
-            </Link>
+              <span className="text-right font-mono text-sm text-foreground">{vote.support}</span>
+            </div>
           ))}
         </div>
       </div>

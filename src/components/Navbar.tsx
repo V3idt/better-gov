@@ -10,7 +10,7 @@ const Navbar = () => {
         <span className="font-semibold">better-gov</span>
       </Link>
       <div className="flex items-center gap-6 text-sm">
-        <Link to="/audits" className="text-muted-foreground hover:text-foreground transition-colors">Review</Link>
+        <Link to="/audits" className="text-muted-foreground hover:text-foreground transition-colors">History</Link>
         <Link to="/docs" className="text-muted-foreground hover:text-foreground transition-colors">How It Works</Link>
       </div>
     </nav>
