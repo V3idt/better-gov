@@ -14,25 +14,25 @@ const statusColor = (s: string) => {
 const voteToneClass = (choice: VoteChoice, isActive: boolean) => {
   if (choice === "approve") {
     return isActive
-      ? "border-emerald-500/45 bg-emerald-500/14 text-emerald-100"
-      : "border-emerald-500/20 bg-emerald-500/6 text-emerald-200/85 hover:border-emerald-400/35 hover:bg-emerald-500/10";
+      ? "border-green-500/35 bg-green-500/14 text-green-400"
+      : "border-green-500/18 bg-green-500/10 text-green-500 hover:border-green-500/28";
   }
 
   if (choice === "reject") {
     return isActive
-      ? "border-rose-500/45 bg-rose-500/14 text-rose-100"
-      : "border-rose-500/20 bg-rose-500/6 text-rose-200/85 hover:border-rose-400/35 hover:bg-rose-500/10";
+      ? "border-red-500/35 bg-red-500/14 text-red-400"
+      : "border-red-500/18 bg-red-500/10 text-red-500 hover:border-red-500/28";
   }
 
   return isActive
-    ? "border-zinc-400/45 bg-zinc-400/12 text-zinc-100"
-    : "border-zinc-400/20 bg-zinc-400/6 text-zinc-300/85 hover:border-zinc-300/35 hover:bg-zinc-400/10";
+    ? "border-amber-500/35 bg-amber-500/14 text-amber-400"
+    : "border-amber-500/18 bg-amber-500/10 text-amber-500 hover:border-amber-500/28";
 };
 
 const savedVoteToneClass = (choice: VoteChoice) => {
-  if (choice === "approve") return "text-emerald-200/85";
-  if (choice === "reject") return "text-rose-200/85";
-  return "text-zinc-300/85";
+  if (choice === "approve") return "text-green-500";
+  if (choice === "reject") return "text-red-500";
+  return "text-amber-500";
 };
 
 const SkillDetail = () => {

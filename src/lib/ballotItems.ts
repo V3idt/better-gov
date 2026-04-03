@@ -37,24 +37,24 @@ export type BallotItem = {
 export const ballotItems: BallotItem[] = [
   {
     rank: 1,
-    slug: "open-budget-ledger",
-    jurisdictionSlug: "national",
-    jurisdiction: "National",
+    slug: "transparent-department-budgets",
+    jurisdictionSlug: "campus",
+    jurisdiction: "University",
     category: "Budget & transparency",
-    title: "Open Budget Ledger",
+    title: "Transparent Department Budgets",
     status: "Open",
-    support: "71.2%",
-    turnout: "2.8M votes",
+    support: "72.4%",
+    turnout: "18.4K votes",
     closesOn: "May 14, 2026",
     postedOn: "March 28, 2026",
-    sponsor: "Citizen petition",
-    scope: "Applies to every ministry, agency, and public fund.",
-    tldr: "Any budget transfer above a defined threshold should be visible to the public within 48 hours, with source, destination, amount, and justification.",
+    sponsor: "Student assembly",
+    scope: "Applies to academic departments, student services, and central administration.",
+    tldr: "Department budget changes should be published quickly with plain-language explanations students and staff can actually follow.",
     bullets: [
-      "Creates a searchable public ledger for reallocations, emergency transfers, and off-cycle spending.",
-      "Requires machine-readable exports so journalists, researchers, and citizens can audit changes.",
-      "Adds a short plain-language explanation for each transfer, not just accounting codes.",
-      "Makes late or missing disclosures automatically visible on a public compliance list.",
+      "Creates a searchable dashboard for budget updates, transfers, and reserve spending.",
+      "Requires short explanations for each change, not just accounting codes.",
+      "Publishes machine-readable exports for student groups and campus media.",
+      "Flags late or missing disclosures on a public compliance list.",
     ],
     reviewChecks: [
       { name: "Rights", status: "PASS" },
@@ -62,21 +62,21 @@ export const ballotItems: BallotItem[] = [
       { name: "Delivery", status: "WARN" },
     ],
     voteBreakdown: [
-      { label: "Approve", share: 71.2, count: "1.99M" },
-      { label: "Reject", share: 18.6, count: "521K" },
-      { label: "Abstain", share: 10.2, count: "286K" },
+      { label: "Approve", share: 72.4, count: "13.3K" },
+      { label: "Reject", share: 17.8, count: "3.3K" },
+      { label: "Abstain", share: 9.8, count: "1.8K" },
     ],
-    brief: `# Open Budget Ledger
+    brief: `# Transparent Department Budgets
 
 ## Why this is on the ballot
 
-Large public spending changes often happen after the main budget vote and become hard for ordinary people to follow.
+Students and staff often hear about budget cuts or reallocations after decisions are already made, with little detail on what changed.
 
 ## What would change
 
-- Every transfer above the reporting threshold appears in a public ledger within 48 hours.
-- Each entry must show source account, destination account, amount, and reason.
-- The ledger must support search, filtering, and CSV export.
+- Material budget changes must appear on a public dashboard within seven days.
+- Each entry must show source, destination, amount, and reason.
+- The dashboard must support search, filtering, and CSV export.
 
 ## What stays the same
 
@@ -84,71 +84,71 @@ Departments can still move funds in emergencies, but they lose the ability to do
   },
   {
     rank: 2,
-    slug: "location-data-warrant-rule",
-    jurisdictionSlug: "national",
-    jurisdiction: "National",
-    category: "Privacy & digital rights",
-    title: "Location Data Warrant Rule",
+    slug: "lecture-recording-default",
+    jurisdictionSlug: "academic-senate",
+    jurisdiction: "Academic Senate",
+    category: "Teaching & access",
+    title: "Lecture Recording Default",
     status: "Open",
     support: "68.4%",
-    turnout: "2.1M votes",
+    turnout: "15.9K votes",
     closesOn: "May 09, 2026",
     postedOn: "March 24, 2026",
-    sponsor: "Civil liberties coalition",
-    scope: "Covers police, tax authorities, regulators, and contracted vendors.",
-    tldr: "Government should not be able to buy bulk location data from brokers to bypass warrant requirements.",
+    sponsor: "Accessibility coalition",
+    scope: "Applies to large lecture courses, with opt-out exceptions for specific pedagogical or privacy reasons.",
+    tldr: "Lecture recordings should be the default in major courses so students are not penalized for illness, work, disability, or care responsibilities.",
     bullets: [
-      "Blocks agency procurement of commercially purchased location data tied to individuals or devices.",
-      "Requires a court order for targeted access except for narrow emergency exemptions.",
-      "Forces public disclosure of existing broker contracts and termination timelines.",
-      "Adds penalties for agencies that route purchases through third-party intermediaries.",
+      "Makes recording the default for high-enrollment classes.",
+      "Requires a clear process for justified exceptions.",
+      "Sets minimum retention windows during the term.",
+      "Adds captioning requirements for recorded material.",
     ],
     reviewChecks: [
       { name: "Rights", status: "PASS" },
-      { name: "Budget", status: "PASS" },
+      { name: "Budget", status: "WARN" },
       { name: "Delivery", status: "PASS" },
     ],
     voteBreakdown: [
-      { label: "Approve", share: 68.4, count: "1.44M" },
-      { label: "Reject", share: 20.9, count: "439K" },
-      { label: "Abstain", share: 10.7, count: "225K" },
+      { label: "Approve", share: 68.4, count: "10.9K" },
+      { label: "Reject", share: 20.9, count: "3.3K" },
+      { label: "Abstain", share: 10.7, count: "1.7K" },
     ],
-    brief: `# Warrant Rule for Purchased Location Data
+    brief: `# Lecture Recording Default
 
 ## Problem
 
-Data brokers can sell location trails that reveal where people sleep, worship, work, organize, or seek care.
+Students miss classes for reasons that are ordinary and unavoidable, but course access still depends heavily on being physically present at one exact time.
 
 ## Proposal
 
-- Public agencies may not purchase or license location data that would otherwise require legal process.
-- Existing contracts must be disclosed and sunsetted.
-- Emergency use is limited to imminent threats and logged for later review.
+- Large lecture courses record by default.
+- Exceptions require a written reason and an alternative access plan.
+- Recordings remain available for the duration of the term.
 
 ## Expected effect
 
-The measure closes a surveillance loophole created by the commercial data market.`,
+The measure improves access without forcing every instructor into the exact same teaching model.`,
   },
   {
     rank: 3,
-    slug: "universal-school-meals",
-    jurisdictionSlug: "state",
-    jurisdiction: "State",
-    category: "Education & child welfare",
-    title: "Universal School Meals",
+    slug: "main-library-24-7",
+    jurisdictionSlug: "library",
+    jurisdiction: "University Library",
+    category: "Library & study space",
+    title: "24/7 Main Library",
     status: "Closing Soon",
     support: "64.7%",
-    turnout: "1.6M votes",
+    turnout: "14.2K votes",
     closesOn: "April 11, 2026",
     postedOn: "March 17, 2026",
-    sponsor: "Parents and teachers initiative",
-    scope: "Applies to all state-funded public primary and secondary schools.",
-    tldr: "No student should be means-tested or denied a meal during the school day.",
+    sponsor: "Library users council",
+    scope: "Covers the main library during term time, with exam-period staffing and security plans.",
+    tldr: "The main library should stay open 24/7 during the semester so students have a reliable study space regardless of schedule or housing situation.",
     bullets: [
-      "Removes income paperwork and debt collection tied to school meals.",
-      "Funds universal breakfast and lunch through the state education budget.",
-      "Protects local sourcing targets where feasible without raising student cost.",
-      "Requires annual reporting on uptake, nutrition quality, and absenteeism impact.",
+      "Extends access beyond exam week only.",
+      "Adds overnight security, custodial coverage, and staffed help hours.",
+      "Publishes usage data to reassess after one academic year.",
+      "Prioritizes quiet study floors and accessible entrances overnight.",
     ],
     reviewChecks: [
       { name: "Rights", status: "PASS" },
@@ -156,46 +156,46 @@ The measure closes a surveillance loophole created by the commercial data market
       { name: "Delivery", status: "PASS" },
     ],
     voteBreakdown: [
-      { label: "Approve", share: 64.7, count: "1.03M" },
-      { label: "Reject", share: 24.1, count: "386K" },
-      { label: "Abstain", share: 11.2, count: "179K" },
+      { label: "Approve", share: 64.7, count: "9.2K" },
+      { label: "Reject", share: 24.1, count: "3.4K" },
+      { label: "Abstain", share: 11.2, count: "1.6K" },
     ],
-    brief: `# Universal School Meals
+    brief: `# 24/7 Main Library
 
 ## Core idea
 
-Every child in public school receives breakfast and lunch without application forms, debt notices, or stigma.
+Students should have at least one predictable, safe place to study at any hour during the semester.
 
 ## Included
 
-- Direct state funding for universal meals.
-- Nutrition standards and supplier transparency.
-- Reporting on attendance, concentration, and meal participation.
+- Overnight building access.
+- Security and staffing plan.
+- Annual review of cost and usage.
 
 ## Tradeoff
 
-The measure expands recurring education spending and requires procurement scaling.`,
+The measure increases recurring staffing and operating costs.`,
   },
   {
     rank: 4,
-    slug: "bus-lanes-before-road-widening",
-    jurisdictionSlug: "city",
-    jurisdiction: "City",
-    category: "Transit & streets",
-    title: "Bus Lanes Before Road Widening",
+    slug: "late-night-shuttle-expansion",
+    jurisdictionSlug: "campus",
+    jurisdiction: "University",
+    category: "Transit & safety",
+    title: "Late-Night Shuttle Expansion",
     status: "Open",
     support: "58.9%",
-    turnout: "842K votes",
+    turnout: "11.4K votes",
     closesOn: "May 22, 2026",
     postedOn: "March 30, 2026",
-    sponsor: "Mobility board referral",
-    scope: "Applies to all city capital street projects above the planning threshold.",
-    tldr: "If the city wants to widen a road, it must first publicly score transit, walking, and safety alternatives.",
+    sponsor: "Night students forum",
+    scope: "Adds routes and frequency between campus, residence halls, and major off-campus student neighborhoods.",
+    tldr: "Late-night campus shuttles should run more often and cover more student-heavy routes after evening classes and library hours.",
     bullets: [
-      "Requires an alternatives analysis before road expansion votes can move forward.",
-      "Makes bus speed, crash reduction, and access outcomes part of project scoring.",
-      "Publishes side-by-side comparisons for public comment before final approval.",
-      "Prevents widening-only proposals from skipping transit review.",
+      "Extends service later into the night on weekdays and weekends.",
+      "Adds stops near large off-campus housing clusters.",
+      "Publishes wait-time and ridership data by route.",
+      "Includes a safety review after the first term.",
     ],
     reviewChecks: [
       { name: "Rights", status: "PASS" },
@@ -203,46 +203,46 @@ The measure expands recurring education spending and requires procurement scalin
       { name: "Delivery", status: "WARN" },
     ],
     voteBreakdown: [
-      { label: "Approve", share: 58.9, count: "496K" },
-      { label: "Reject", share: 29.3, count: "247K" },
-      { label: "Abstain", share: 11.8, count: "99K" },
+      { label: "Approve", share: 58.9, count: "6.7K" },
+      { label: "Reject", share: 29.3, count: "3.3K" },
+      { label: "Abstain", share: 11.8, count: "1.4K" },
     ],
-    brief: `# Bus Lanes Before Road Widening
+    brief: `# Late-Night Shuttle Expansion
 
 ## Why it matters
 
-Road expansions can lock in expensive car dependence while delaying better transit and safer walking conditions.
+Students leaving labs, rehearsals, library floors, or night classes do not all live within a short walk of campus.
 
 ## Proposal
 
-- The city must publish an alternatives study before widening roads.
-- Transit and pedestrian options must be scored on speed, safety, and access.
-- The final vote cannot occur until the comparison is public.
+- Extend operating hours.
+- Increase frequency during peak late-night windows.
+- Add service to student-heavy routes currently underserved.
 
 ## Result
 
-Residents can judge whether a widening project is actually the best use of public space.`,
+The campus becomes easier and safer to move through after dark.`,
   },
   {
     rank: 5,
-    slug: "rent-stability-large-landlords",
-    jurisdictionSlug: "city",
-    jurisdiction: "City",
+    slug: "residence-hall-rent-cap",
+    jurisdictionSlug: "housing",
+    jurisdiction: "Campus Housing",
     category: "Housing",
-    title: "Rent Cap for Large Landlords",
+    title: "Residence Hall Rent Cap",
     status: "Open",
     support: "61.5%",
-    turnout: "1.2M votes",
+    turnout: "12.1K votes",
     closesOn: "May 18, 2026",
     postedOn: "March 22, 2026",
-    sponsor: "Tenant assembly",
-    scope: "Targets landlords above the unit threshold while exempting small owner-occupied buildings.",
-    tldr: "Large landlords should face a cap on annual rent hikes tied to inflation and maintenance exceptions, with stronger disclosure rules for tenants.",
+    sponsor: "Residence council",
+    scope: "Applies to university-operated residence halls and meal-plan bundles tied to housing contracts.",
+    tldr: "Residence hall price increases should be capped and justified publicly before the next housing cycle opens.",
     bullets: [
-      "Limits annual increases for covered landlords to a formula tied to inflation.",
-      "Requires plain-language notice for any increase, fee change, or exemption claim.",
-      "Creates a rapid appeal channel for tenants facing unlawful hikes.",
-      "Publishes landlord compliance data by building portfolio.",
+      "Caps annual price increases unless an exception is approved publicly.",
+      "Requires plain-language notice before contracts open.",
+      "Separates mandatory fee changes from base housing increases.",
+      "Publishes hall-by-hall price histories.",
     ],
     reviewChecks: [
       { name: "Rights", status: "PASS" },
@@ -250,94 +250,94 @@ Residents can judge whether a widening project is actually the best use of publi
       { name: "Delivery", status: "WARN" },
     ],
     voteBreakdown: [
-      { label: "Approve", share: 61.5, count: "738K" },
-      { label: "Reject", share: 27.4, count: "329K" },
-      { label: "Abstain", share: 11.1, count: "133K" },
+      { label: "Approve", share: 61.5, count: "7.4K" },
+      { label: "Reject", share: 27.4, count: "3.3K" },
+      { label: "Abstain", share: 11.1, count: "1.4K" },
     ],
-    brief: `# Rent Stability for Large Landlords
+    brief: `# Residence Hall Rent Cap
 
 ## Intent
 
-The measure tries to slow displacement without applying the same rules to every small property owner.
+The measure tries to slow housing cost growth inside the university's own residential system.
 
 ## Main mechanisms
 
-- Inflation-linked rent cap for covered landlords.
-- Stronger tenant notice requirements.
-- Appeal process for disputed increases.
+- Cap annual increases.
+- Public justification for exceptions.
+- Clearer fee breakdowns before students commit.
 
 ## Open implementation question
 
-The enforcement office must be staffed well enough to process complaints quickly.`,
+Housing operations need a workable exception process for major maintenance years.`,
   },
   {
     rank: 6,
-    slug: "community-solar-fast-track",
-    jurisdictionSlug: "regional",
-    jurisdiction: "Regional",
-    category: "Energy & environment",
-    title: "Fast-Track Public Solar",
+    slug: "counseling-staff-minimums",
+    jurisdictionSlug: "student-services",
+    jurisdiction: "Student Services",
+    category: "Health & wellbeing",
+    title: "Counseling Staff Minimums",
     status: "Open",
     support: "73.8%",
-    turnout: "917K votes",
+    turnout: "13.7K votes",
     closesOn: "May 27, 2026",
     postedOn: "April 01, 2026",
-    sponsor: "Energy transition council",
-    scope: "Covers schools, clinics, libraries, and other public facilities in the region.",
-    tldr: "Public rooftops should be treated as priority sites for solar and storage, with deadlines for permit decisions and community access where feasible.",
+    sponsor: "Health access coalition",
+    scope: "Sets minimum counselor-to-student staffing targets and reporting standards for campus mental health services.",
+    tldr: "The university should maintain a published minimum counseling staffing level so students are not waiting weeks for basic mental health support.",
     bullets: [
-      "Sets permit turnaround deadlines for public-building solar projects.",
-      "Requires an inventory of suitable roofs and underused public land.",
-      "Prioritizes battery backup for essential services like clinics and water pumping.",
-      "Allows community subscription access when on-site use does not consume all output.",
+      "Sets minimum staffing ratios and vacancy reporting.",
+      "Publishes average wait times for first appointments.",
+      "Requires same-week triage availability during term time.",
+      "Adds annual service-access reporting.",
     ],
     reviewChecks: [
       { name: "Rights", status: "PASS" },
-      { name: "Budget", status: "PASS" },
+      { name: "Budget", status: "WARN" },
       { name: "Delivery", status: "PASS" },
     ],
     voteBreakdown: [
-      { label: "Approve", share: 73.8, count: "677K" },
-      { label: "Reject", share: 15.4, count: "141K" },
-      { label: "Abstain", share: 10.8, count: "99K" },
+      { label: "Approve", share: 73.8, count: "10.1K" },
+      { label: "Reject", share: 15.4, count: "2.1K" },
+      { label: "Abstain", share: 10.8, count: "1.5K" },
     ],
-    brief: `# Fast-Track Solar on Public Buildings
+    brief: `# Counseling Staff Minimums
 
 ## Goal
 
-Public property can cut power costs and strengthen resilience if projects stop getting stuck in slow approvals.
+Campus mental health support should not depend on chronic understaffing and opaque wait lists.
 
 ## Includes
 
-- Site inventory.
-- Permit deadlines.
-- Battery backup for critical services.
-- Community access rules where surplus power exists.
+- Minimum staffing targets.
+- Public wait-time reporting.
+- Same-week triage access.
+- Annual service review.
 
 ## Outcome
 
-The region moves clean-energy projects from aspiration into the normal capital pipeline.`,
+The university becomes accountable for whether counseling access is actually improving.`,
   },
   {
     rank: 7,
-    slug: "independent-use-of-force-review",
-    jurisdictionSlug: "city",
-    jurisdiction: "City",
-    category: "Safety & justice",
-    title: "Independent Force Review Board",
+    slug: "exam-schedule-reform",
+    jurisdictionSlug: "faculty",
+    jurisdiction: "Faculty Council",
+    category: "Academic policy",
+    title: "Exam Schedule Reform",
     status: "Closing Soon",
     support: "66.1%",
-    turnout: "1.4M votes",
+    turnout: "11.8K votes",
     closesOn: "April 09, 2026",
     postedOn: "March 14, 2026",
-    sponsor: "Community accountability petition",
-    scope: "Applies to police use-of-force incidents causing serious injury or death.",
-    tldr: "Serious force cases should be reviewed by an independent civilian board with subpoena access and public reporting deadlines.",
+    sponsor: "Undergraduate council",
+    scope: "Covers final exam spacing, conflict rules, and the number of high-stakes assessments allowed in compressed windows.",
+    tldr: "The exam schedule should prevent extreme clustering and require more humane spacing for high-stakes assessments.",
     bullets: [
-      "Creates an external review process independent from the chain of command.",
-      "Sets deadlines for public updates and final findings.",
-      "Requires anonymized publication of patterns, not just case-by-case summaries.",
-      "Includes conflict-of-interest rules for board appointments.",
+      "Limits the number of major exams in a 24-hour window.",
+      "Creates automatic review triggers for severe clustering.",
+      "Strengthens conflict and hardship rescheduling rules.",
+      "Requires departments to publish assessment calendars earlier.",
     ],
     reviewChecks: [
       { name: "Rights", status: "PASS" },
@@ -345,46 +345,46 @@ The region moves clean-energy projects from aspiration into the normal capital p
       { name: "Delivery", status: "WARN" },
     ],
     voteBreakdown: [
-      { label: "Approve", share: 66.1, count: "925K" },
-      { label: "Reject", share: 22.8, count: "319K" },
-      { label: "Abstain", share: 11.1, count: "155K" },
+      { label: "Approve", share: 66.1, count: "7.8K" },
+      { label: "Reject", share: 22.8, count: "2.7K" },
+      { label: "Abstain", share: 11.1, count: "1.3K" },
     ],
-    brief: `# Independent Review for Serious Use of Force
+    brief: `# Exam Schedule Reform
 
 ## Problem
 
-Internal investigations often fail to convince the public that accountability is real.
+Exam timetables can create avoidable spikes in stress when several major assessments land in the same narrow window.
 
 ## What this creates
 
-- Civilian review board with subpoena access.
-- Public timeline for case updates.
-- Pattern reporting across incidents.
+- Spacing rules for high-stakes assessments.
+- Stronger conflict protections.
+- Earlier publication of assessment timing.
 
 ## Risk to manage
 
-The board needs operational independence, staffing, and protected access to evidence.`,
+Departments need enough scheduling flexibility to implement the rules without creating new bottlenecks.`,
   },
   {
     rank: 8,
-    slug: "public-childcare-guarantee",
-    jurisdictionSlug: "state",
-    jurisdiction: "State",
-    category: "Care, labor & family policy",
-    title: "Public Childcare Guarantee",
+    slug: "one-year-tuition-freeze",
+    jurisdictionSlug: "board",
+    jurisdiction: "Board of Trustees",
+    category: "Tuition & fees",
+    title: "One-Year Tuition Freeze",
     status: "Draft",
     support: "59.4%",
-    turnout: "603K votes",
+    turnout: "9.6K votes",
     closesOn: "June 03, 2026",
     postedOn: "April 02, 2026",
-    sponsor: "Care economy taskforce",
-    scope: "Begins with high-need districts and expands statewide under a published schedule.",
-    tldr: "Families should have a guaranteed affordable childcare slot, starting with the highest-need districts and public-provider expansion.",
+    sponsor: "Fee justice campaign",
+    scope: "Applies to base tuition for one academic year while auxiliary fees are disclosed separately.",
+    tldr: "Base tuition should be frozen for one academic year while the university publishes a clearer plan for cost control and financial aid.",
     bullets: [
-      "Creates phased rollout targets with public supply maps and waiting-list data.",
-      "Combines direct public provision with capped-fee partner slots.",
-      "Raises worker pay floors and training support to reduce staffing shortages.",
-      "Requires quarterly public reporting on access, cost, and neighborhood coverage.",
+      "Freezes base tuition for one year.",
+      "Requires a public breakdown of offsetting cost controls.",
+      "Separates tuition, housing, and fee increases in reporting.",
+      "Pairs the freeze with a financial-aid impact review.",
     ],
     reviewChecks: [
       { name: "Rights", status: "PASS" },
@@ -392,25 +392,25 @@ The board needs operational independence, staffing, and protected access to evid
       { name: "Delivery", status: "WARN" },
     ],
     voteBreakdown: [
-      { label: "Approve", share: 59.4, count: "358K" },
-      { label: "Reject", share: 25.6, count: "154K" },
-      { label: "Abstain", share: 15.0, count: "91K" },
+      { label: "Approve", share: 59.4, count: "5.7K" },
+      { label: "Reject", share: 25.6, count: "2.5K" },
+      { label: "Abstain", share: 15.0, count: "1.4K" },
     ],
-    brief: `# Public Childcare Guarantee
+    brief: `# One-Year Tuition Freeze
 
 ## Purpose
 
-Childcare access shapes employment, early childhood development, and household stability.
+Students need short-term protection from cost increases while the university explains how it plans to control long-term spending.
 
 ## Structure
 
-- Phased statewide rollout.
-- Public reporting on where slots exist and where they do not.
-- Worker pay and training provisions.
+- One-year freeze on base tuition.
+- Public cost-control plan.
+- Financial-aid review tied to the freeze.
 
 ## Hard part
 
-This only works if workforce expansion keeps pace with demand.`,
+The university still needs a credible answer for costs that continue rising underneath the freeze.`,
   },
 ];
 
