@@ -35,6 +35,19 @@ const savedVoteToneClass = (choice: VoteChoice) => {
   return "text-amber-500";
 };
 
+const reviewLabel = (name: string) => {
+  if (name === "Rights") return "Rights impact";
+  if (name === "Budget") return "Budget pressure";
+  if (name === "Delivery") return "Delivery risk";
+  return name;
+};
+
+const splitPillClass = (label: string) => {
+  if (label === "Approve") return "text-green-500 bg-green-500/10";
+  if (label === "Reject") return "text-red-500 bg-red-500/10";
+  return "text-amber-500 bg-amber-500/10";
+};
+
 const SkillDetail = () => {
   const { "*": path } = useParams();
   const item = useMemo(() => {
@@ -190,11 +203,14 @@ const SkillDetail = () => {
             </div>
 
             <div>
-              <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Review Checks</h3>
+              <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Quick Read</h3>
+              <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                A fast read on rights impact, budget pressure, and delivery risk.
+              </p>
               <div className="space-y-2">
                 {item.reviewChecks.map((a) => (
                   <div key={a.name} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{a.name}</span>
+                    <span className="text-muted-foreground">{reviewLabel(a.name)}</span>
                     <span className={`text-xs font-mono px-2 py-0.5 rounded ${statusColor(a.status)}`}>
                       {a.status}
                     </span>
@@ -209,7 +225,12 @@ const SkillDetail = () => {
                 {item.voteBreakdown.map((result) => (
                   <div key={result.label} className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">{result.label}</span>
-                    <span className="text-foreground font-mono">{result.share.toFixed(1)}% / {result.count}</span>
+                    <span className="flex items-center gap-2 font-mono">
+                      <span className={`rounded px-2 py-0.5 text-xs ${splitPillClass(result.label)}`}>
+                        {result.share.toFixed(1)}%
+                      </span>
+                      <span className="text-foreground">{result.count}</span>
+                    </span>
                   </div>
                 ))}
               </div>
