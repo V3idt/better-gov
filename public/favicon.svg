@@ -1,24 +1,52 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <rect width="64" height="64" rx="14" fill="#0d0a08" />
-  <rect x="16" y="25" width="32" height="23" rx="3" stroke="#d4cdc4" stroke-width="3" />
   <path
-    d="M26 19.5L32 12L38 19.5"
+    d="M16 24L32 13L48 24"
     stroke="#d4cdc4"
     stroke-linecap="round"
     stroke-linejoin="round"
     stroke-width="3"
   />
   <path
-    d="M32 12V33"
+    d="M20 25V43"
     stroke="#d4cdc4"
     stroke-linecap="round"
     stroke-width="3"
   />
   <path
-    d="M24 34L30 40L42 26"
-    stroke="#4ade80"
+    d="M28 25V43"
+    stroke="#d4cdc4"
     stroke-linecap="round"
-    stroke-linejoin="round"
+    stroke-width="3"
+  />
+  <path
+    d="M36 25V43"
+    stroke="#d4cdc4"
+    stroke-linecap="round"
+    stroke-width="3"
+  />
+  <path
+    d="M44 25V43"
+    stroke="#d4cdc4"
+    stroke-linecap="round"
+    stroke-width="3"
+  />
+  <path
+    d="M18 25H46"
+    stroke="#d4cdc4"
+    stroke-linecap="round"
+    stroke-width="3"
+  />
+  <path
+    d="M16 45H48"
+    stroke="#d4cdc4"
+    stroke-linecap="round"
+    stroke-width="3"
+  />
+  <path
+    d="M14 50H50"
+    stroke="#d4cdc4"
+    stroke-linecap="round"
     stroke-width="3"
   />
 </svg>
