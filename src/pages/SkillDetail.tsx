@@ -1,8 +1,8 @@
 import Navbar from "@/components/Navbar";
 import { Link, useParams } from "react-router-dom";
 import { Copy, FileText } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { ballotItems, findBallotItemByPath } from "@/lib/ballotItems";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,7 +13,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { ballotItems, findBallotItemByPath } from "@/lib/ballotItems";
 import type { VoteChoice } from "@/lib/ballotItems";
+import { policyIdForItem, VotingApiError } from "@/lib/voting";
+import { getVoteStatus, submitVote } from "@/lib/voting-api";
 
 const statusColor = (s: string) => {
   if (s === "PASS") return "text-green-500 bg-green-500/10";
@@ -59,35 +62,30 @@ const splitPillClass = (label: string) => {
 };
 
 const SkillDetail = () => {
+  const queryClient = useQueryClient();
   const { "*": path } = useParams();
   const item = useMemo(() => {
     if (!path) return ballotItems[0];
     return findBallotItemByPath(path) ?? ballotItems[0];
   }, [path]);
+  const policyId = useMemo(() => policyIdForItem(item), [item]);
 
   const [copied, setCopied] = useState(false);
-  const [vote, setVote] = useState<VoteChoice | null | undefined>(undefined);
   const [pendingVote, setPendingVote] = useState<VoteChoice | null>(null);
-  const voteStorageKey = `better-gov:vote:${item.jurisdictionSlug}:${item.slug}`;
   const sharePath = `/${item.jurisdictionSlug}/${item.slug}`;
 
-  useEffect(() => {
-    const storedVote = window.localStorage.getItem(voteStorageKey) as VoteChoice | null;
-    setVote(storedVote);
-  }, [voteStorageKey]);
+  const voteQuery = useQuery({
+    queryKey: ["vote-status", policyId],
+    queryFn: () => getVoteStatus(policyId),
+  });
 
-  useEffect(() => {
-    if (vote === undefined) {
-      return;
-    }
-
-    if (!vote) {
-      window.localStorage.removeItem(voteStorageKey);
-      return;
-    }
-
-    window.localStorage.setItem(voteStorageKey, vote);
-  }, [vote, voteStorageKey]);
+  const submitMutation = useMutation({
+    mutationFn: (choice: VoteChoice) => submitVote(policyId, choice),
+    onSuccess: async () => {
+      setPendingVote(null);
+      await queryClient.invalidateQueries({ queryKey: ["vote-status", policyId] });
+    },
+  });
 
   const handleCopy = () => {
     navigator.clipboard.writeText(`${window.location.origin}${sharePath}`);
@@ -95,19 +93,29 @@ const SkillDetail = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleVote = (choice: VoteChoice) => {
-    setPendingVote(choice);
-  };
+  const currentVote = voteQuery.data?.vote ?? null;
+  const identitySources = voteQuery.data?.identitySources ?? [];
+  const person = voteQuery.data?.person ?? null;
+  const voteMessage = currentVote
+    ? `Recorded vote: ${currentVote.choice} at ${new Date(currentVote.updatedAt).toLocaleString()}`
+    : "No vote recorded for this policy yet.";
+  const pendingVoteLabel = pendingVote ? pendingVote.charAt(0).toUpperCase() + pendingVote.slice(1) : "";
 
-  const confirmVote = () => {
-    if (!pendingVote) return;
-    setVote(pendingVote);
-    setPendingVote(null);
-  };
+  const errorMessage =
+    submitMutation.error instanceof VotingApiError
+      ? submitMutation.error.code === "policy_closed"
+        ? "This policy is closed."
+        : submitMutation.error.message
+      : submitMutation.error instanceof Error
+        ? submitMutation.error.message
+        : "";
 
-  const pendingVoteLabel = pendingVote
-    ? pendingVote.charAt(0).toUpperCase() + pendingVote.slice(1)
-    : "";
+  const loadError =
+    voteQuery.error instanceof VotingApiError
+      ? voteQuery.error.message
+      : voteQuery.error instanceof Error
+        ? voteQuery.error.message
+        : "";
 
   return (
     <div className="min-h-screen bg-background text-foreground font-mono">
@@ -127,16 +135,26 @@ const SkillDetail = () => {
             <AlertDialogCancel className="border-border bg-secondary/50 text-foreground hover:bg-secondary">
               Cancel
             </AlertDialogCancel>
-            <AlertDialogAction className="bg-foreground text-background hover:bg-foreground/90" onClick={confirmVote}>
+            <AlertDialogAction
+              className="bg-foreground text-background hover:bg-foreground/90"
+              onClick={() => {
+                if (!pendingVote) {
+                  return;
+                }
+
+                void submitMutation.mutateAsync(pendingVote);
+              }}
+            >
               Confirm
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
       <div className="max-w-5xl mx-auto px-6 pt-12 pb-16">
-        {/* Breadcrumb */}
         <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <Link to="/" className="hover:text-foreground transition-colors">ballot</Link>
+          <Link to="/" className="hover:text-foreground transition-colors">
+            ballot
+          </Link>
           <span>/</span>
           <span className="hover:text-foreground transition-colors cursor-pointer">{item.jurisdictionSlug}</span>
           <span>/</span>
@@ -144,14 +162,14 @@ const SkillDetail = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-12">
-          {/* Main content */}
           <div>
             <h1 className="mb-4 break-words text-3xl font-semibold text-foreground">{item.title}</h1>
 
-            {/* Share path */}
             <div className="mb-6 flex items-start gap-3 rounded-lg bg-secondary/50 px-4 py-3">
               <span className="pt-0.5 text-muted-foreground">$</span>
-              <span className="min-w-0 flex-1 break-all whitespace-pre-wrap text-sm leading-relaxed text-foreground">{sharePath}</span>
+              <span className="min-w-0 flex-1 break-all whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                {sharePath}
+              </span>
               <button onClick={handleCopy} className="shrink-0 text-muted-foreground transition-colors hover:text-foreground">
                 <Copy className="w-4 h-4" />
               </button>
@@ -162,39 +180,55 @@ const SkillDetail = () => {
                 <div>
                   <h3 className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Vote on this item</h3>
                   <p className="text-sm text-muted-foreground">
-                    Choose your position. Your selection is saved on this device.
+                    Choose your position. The server resolves you to one canonical person record.
                   </p>
                 </div>
                 {copied ? (
                   <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Link copied</span>
                 ) : null}
               </div>
+              <div className="mb-4 rounded border border-border bg-secondary/40 px-4 py-3 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>person_id</span>
+                  <span className="font-mono text-foreground">{person?.id ?? "resolving..."}</span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {identitySources.map((source) => (
+                    <span key={`${source.type}:${source.value}`} className="rounded bg-background px-2 py-0.5 font-mono text-foreground">
+                      {source.type}: {source.value}
+                    </span>
+                  ))}
+                </div>
+              </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {(["approve", "reject", "abstain"] as VoteChoice[]).map((choice) => {
-                  const isActive = vote === choice;
+                  const isActive = currentVote?.choice === choice;
 
                   return (
                     <button
                       key={choice}
-                      onClick={() => handleVote(choice)}
+                      onClick={() => setPendingVote(choice)}
+                      disabled={submitMutation.isPending}
                       className={`rounded border px-4 py-3 text-left text-sm uppercase tracking-[0.14em] transition-colors ${voteToneClass(
                         choice,
                         isActive,
-                      )}`}
+                      )} ${submitMutation.isPending ? "cursor-not-allowed opacity-60" : ""}`}
                     >
                       {choice}
                     </button>
                   );
                 })}
               </div>
-              {vote ? (
-                <p className={`mt-4 text-xs uppercase tracking-[0.16em] ${savedVoteToneClass(vote)}`}>
-                  Saved vote: {vote}
+              {loadError ? <p className="mt-2 text-xs text-red-500">{loadError}</p> : null}
+              {currentVote ? (
+                <p className={`mt-4 text-xs uppercase tracking-[0.16em] ${savedVoteToneClass(currentVote.choice)}`}>
+                  Saved vote: {currentVote.choice}
                 </p>
               ) : null}
+              <p className="mt-2 text-xs text-muted-foreground">{voteMessage}</p>
+              {errorMessage ? <p className="mt-2 text-xs text-red-500">{errorMessage}</p> : null}
             </div>
 
-            {/* tl;dr card */}
             <div className="border border-border rounded-lg p-5 mb-6">
               <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-3">tl;dr</h3>
               <p className="text-sm font-semibold text-foreground mb-3">{item.tldr}</p>
@@ -208,7 +242,6 @@ const SkillDetail = () => {
               </ul>
             </div>
 
-            {/* Full brief */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4 border-b border-border pb-3">
               <FileText className="h-4 w-4" aria-hidden="true" />
               <span className="font-mono">FULL BRIEF</span>
@@ -226,7 +259,6 @@ const SkillDetail = () => {
             </div>
           </div>
 
-          {/* Sidebar */}
           <div className="space-y-8">
             <div>
               <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Current Support</h3>
@@ -257,16 +289,14 @@ const SkillDetail = () => {
                 {item.reviewChecks.map((a) => (
                   <div key={a.name} className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">{reviewLabel(a.name)}</span>
-                    <span className={`text-xs font-mono px-2 py-0.5 rounded ${statusColor(a.status)}`}>
-                      {a.status}
-                    </span>
+                    <span className={`text-xs font-mono px-2 py-0.5 rounded ${statusColor(a.status)}`}>{a.status}</span>
                   </div>
                 ))}
               </div>
             </div>
 
             <div>
-              <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Current Split</h3>
+              <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Current Split</h3>
               <div className="space-y-2">
                 {item.voteBreakdown.map((result) => (
                   <div key={result.label} className="flex items-center justify-between text-sm">
@@ -304,3 +334,4 @@ const SkillDetail = () => {
 };
 
 export default SkillDetail;
+
