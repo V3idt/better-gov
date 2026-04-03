@@ -20,7 +20,7 @@ const Index = () => {
             </p>
 
             <h3 className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
-              Naming
+              On the ballot
             </h3>
             <CommandInput />
           </div>
