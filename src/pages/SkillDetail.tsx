@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { Copy, FileText } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ballotItems, findBallotItemByPath } from "@/lib/ballotItems";
+import { toast } from "@/components/ui/sonner";
 import type { VoteChoice } from "@/lib/ballotItems";
 
 const statusColor = (s: string) => {
@@ -84,6 +85,16 @@ const SkillDetail = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleVote = (choice: VoteChoice) => {
+    const nextLabel = choice.charAt(0).toUpperCase() + choice.slice(1);
+    const verb = vote && vote !== choice ? "updated" : "recorded";
+
+    setVote(choice);
+    toast(`${nextLabel} vote ${verb}`, {
+      description: `${item.title}`,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground font-mono">
       <Navbar />
@@ -130,7 +141,7 @@ const SkillDetail = () => {
                   return (
                     <button
                       key={choice}
-                      onClick={() => setVote(choice)}
+                      onClick={() => handleVote(choice)}
                       className={`rounded border px-4 py-3 text-left text-sm uppercase tracking-[0.14em] transition-colors ${voteToneClass(
                         choice,
                         isActive,
