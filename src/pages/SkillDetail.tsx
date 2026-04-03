@@ -14,18 +14,18 @@ const statusColor = (s: string) => {
 const voteToneClass = (choice: VoteChoice, isActive: boolean) => {
   if (choice === "approve") {
     return isActive
-      ? "border-green-500/35 bg-green-500/14 text-green-400"
+      ? "border-transparent bg-green-500/10 text-green-500"
       : "border-border bg-secondary/50 text-foreground hover:border-muted-foreground";
   }
 
   if (choice === "reject") {
     return isActive
-      ? "border-red-500/35 bg-red-500/14 text-red-400"
+      ? "border-transparent bg-red-500/10 text-red-500"
       : "border-border bg-secondary/50 text-foreground hover:border-muted-foreground";
   }
 
   return isActive
-    ? "border-amber-500/35 bg-amber-500/14 text-amber-400"
+    ? "border-transparent bg-amber-500/10 text-amber-500"
     : "border-border bg-secondary/50 text-foreground hover:border-muted-foreground";
 };
 
