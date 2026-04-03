@@ -104,8 +104,9 @@ const LeaderboardTable = () => {
       {/* Table Rows */}
       <div className="divide-y divide-border">
         {filtered.map((skill) => (
-          <div
+          <Link
             key={`${skill.rank}-${skill.repo}-${skill.name}`}
+            to={`/${skill.repo}/${skill.name}`}
             className="grid grid-cols-[40px_1fr_80px] items-center py-3.5 px-2 hover:bg-secondary/50 transition-colors cursor-pointer group"
           >
             <span className="text-sm text-muted-foreground">{skill.rank}</span>
@@ -114,7 +115,7 @@ const LeaderboardTable = () => {
               <span className="text-xs text-muted-foreground truncate font-mono">{skill.repo}</span>
             </div>
             <span className="text-sm text-muted-foreground text-right font-mono">{skill.installs}</span>
-          </div>
+          </Link>
         ))}
       </div>
     </div>
