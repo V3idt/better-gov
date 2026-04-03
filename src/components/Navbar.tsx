@@ -10,9 +10,6 @@ const Navbar = () => {
         <span className="font-semibold">better-gov</span>
       </Link>
       <div className="flex items-center gap-6 text-sm">
-        <span className="text-muted-foreground">
-          public beta <span className="ml-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">LIVE</span>
-        </span>
         <Link to="/audits" className="text-muted-foreground hover:text-foreground transition-colors">Review</Link>
         <Link to="/docs" className="text-muted-foreground hover:text-foreground transition-colors">How It Works</Link>
       </div>
