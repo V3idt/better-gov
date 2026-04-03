@@ -1,52 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect width="64" height="64" rx="14" fill="#0d0a08" />
-  <path
-    d="M16 24L32 13L48 24"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <rect width="24" height="24" rx="5" fill="#0d0a08" />
+  <line x1="3" x2="21" y1="22" y2="22" stroke="#d4cdc4" stroke-linecap="round" stroke-width="1.75" />
+  <line x1="6" x2="6" y1="18" y2="11" stroke="#d4cdc4" stroke-linecap="round" stroke-width="1.75" />
+  <line x1="10" x2="10" y1="18" y2="11" stroke="#d4cdc4" stroke-linecap="round" stroke-width="1.75" />
+  <line x1="14" x2="14" y1="18" y2="11" stroke="#d4cdc4" stroke-linecap="round" stroke-width="1.75" />
+  <line x1="18" x2="18" y1="18" y2="11" stroke="#d4cdc4" stroke-linecap="round" stroke-width="1.75" />
+  <polygon
+    points="12 2 20 7 4 7"
     stroke="#d4cdc4"
     stroke-linecap="round"
     stroke-linejoin="round"
-    stroke-width="3"
-  />
-  <path
-    d="M20 25V43"
-    stroke="#d4cdc4"
-    stroke-linecap="round"
-    stroke-width="3"
-  />
-  <path
-    d="M28 25V43"
-    stroke="#d4cdc4"
-    stroke-linecap="round"
-    stroke-width="3"
-  />
-  <path
-    d="M36 25V43"
-    stroke="#d4cdc4"
-    stroke-linecap="round"
-    stroke-width="3"
-  />
-  <path
-    d="M44 25V43"
-    stroke="#d4cdc4"
-    stroke-linecap="round"
-    stroke-width="3"
-  />
-  <path
-    d="M18 25H46"
-    stroke="#d4cdc4"
-    stroke-linecap="round"
-    stroke-width="3"
-  />
-  <path
-    d="M16 45H48"
-    stroke="#d4cdc4"
-    stroke-linecap="round"
-    stroke-width="3"
-  />
-  <path
-    d="M14 50H50"
-    stroke="#d4cdc4"
-    stroke-linecap="round"
-    stroke-width="3"
+    stroke-width="1.75"
   />
 </svg>
