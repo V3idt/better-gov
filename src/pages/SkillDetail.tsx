@@ -16,7 +16,10 @@ import {
 import { ballotItems, findBallotItemByPath } from "@/lib/ballotItems";
 import type { VoteChoice } from "@/lib/ballotItems";
 import { policyIdForItem, VotingApiError } from "@/lib/voting";
-import { getVoteStatus, submitVote } from "@/lib/voting-api";
+import {
+  getVoteStatus,
+  submitVote,
+} from "@/lib/voting-api";
 
 const statusColor = (s: string) => {
   if (s === "PASS") return "text-green-500 bg-green-500/10";
@@ -109,7 +112,6 @@ const SkillDetail = () => {
       : submitMutation.error instanceof Error
         ? submitMutation.error.message
         : "";
-
   const loadError =
     voteQuery.error instanceof VotingApiError
       ? voteQuery.error.message
@@ -334,4 +336,3 @@ const SkillDetail = () => {
 };
 
 export default SkillDetail;
-
