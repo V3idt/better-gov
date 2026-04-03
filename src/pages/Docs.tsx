@@ -14,26 +14,9 @@ const overviewContent = (
       Better Gov is a direct-governance platform where public decisions become ballot items that people can read, review, and vote on.
     </p>
 
-    <p className="text-muted-foreground mb-10">
-      Recommended umbrella term: <code className="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">ballot item</code>. It is broad enough to cover laws, budgets, permits, appointments, infrastructure plans, service changes, and rights-impacting rules.
-    </p>
-
     <h2 className="text-xl font-semibold text-foreground mb-4">What is a ballot item?</h2>
     <p className="text-muted-foreground mb-10">
       A ballot item is any public decision that should be visible, understandable, and directly voteable by the people affected by it.
-    </p>
-
-    <h2 className="text-xl font-semibold text-foreground mb-4">What should be included?</h2>
-    <p className="text-muted-foreground mb-4">
-      Start broad and avoid artificial narrowing. Better Gov should include:
-    </p>
-    <div className={commandBlockClass}>
-      budgets / taxes / procurement / housing / zoning / transit / schools /
-      health / utilities / labor / energy / environment / policing / courts /
-      privacy / digital rights / welfare / major appointments / local projects
-    </div>
-    <p className="text-muted-foreground mb-10">
-      The default stance should be inclusion. If a decision changes people's lives, money, rights, access, land, or services, it belongs on the ballot.
     </p>
 
     <h2 className="text-xl font-semibold text-foreground mb-4">How people use the platform</h2>
@@ -102,16 +85,6 @@ const faqContent = (
     <h1 className="text-3xl font-semibold text-foreground mb-4">Frequently Asked Questions</h1>
     <p className="text-muted-foreground mb-10">
       Common questions about the Better Gov model.
-    </p>
-
-    <h2 className="text-xl font-semibold text-foreground mb-4">What should these items be called?</h2>
-    <p className="text-muted-foreground mb-10">
-      Recommended default: ballot items. Good alternatives are public decisions or civic measures, but ballot item is the clearest umbrella term for now.
-    </p>
-
-    <h2 className="text-xl font-semibold text-foreground mb-4">What belongs on the ballot?</h2>
-    <p className="text-muted-foreground mb-10">
-      Anything that materially changes rights, money, land use, service levels, infrastructure, enforcement, access, or long-term public obligations should be eligible.
     </p>
 
     <h2 className="text-xl font-semibold text-foreground mb-4">Why not leave this to representatives?</h2>
