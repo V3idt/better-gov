@@ -17,10 +17,6 @@ const Index = () => {
             <p className="text-xs tracking-[0.25em] uppercase text-muted-foreground mt-4 mb-10">
               Direct Governance For Everyday Public Decisions
             </p>
-
-            <h3 className="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-3">
-              On the ballot
-            </h3>
             <CommandInput />
           </div>
 
