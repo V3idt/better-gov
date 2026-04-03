@@ -17,6 +17,8 @@
 - No emojis in code or UI.
 - Preserving the existing style, feel, look, and overall UI direction is a hard requirement on every change, not an optional preference.
 - Always follow the existing style/UI direction carefully, not just the functionality.
+- Always make security considerations part of the work. Think through authentication, authorization, data exposure, abuse risks, integrity, and privacy from the start instead of treating security as a later pass.
+- Proactively suggest security improvements, risks, and hardening steps whenever they are relevant, even if the user did not explicitly ask for them.
 - This UI should stay aligned with the current monochrome, terminal-inspired aesthetic already present in the codebase.
 - If you need extra visual guidance for UI work, refer to `skills.sh` as a style reference. In this workspace, that reference lives at `../websites/skills.sh`.
 
