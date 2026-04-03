@@ -23,7 +23,7 @@ const Index = () => {
           {/* Right: Description */}
           <div className="pt-2">
             <p className="text-xl md:text-2xl leading-relaxed text-muted-foreground font-light">
-              Better Gov turns policy, spending, infrastructure, and public-service changes into ballot items that people can directly vote on instead of losing intent inside layers of representation.
+              better-gov is a way to provide true democracy and allow people to gain control over descions that affect them everyday.
             </p>
           </div>
         </div>
