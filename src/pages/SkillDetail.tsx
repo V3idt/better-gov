@@ -1,6 +1,6 @@
 import Navbar from "@/components/Navbar";
 import { Link, useParams } from "react-router-dom";
-import { Copy, ExternalLink, Star } from "lucide-react";
+import { Copy, ExternalLink, FileText, Star } from "lucide-react";
 import { useState } from "react";
 
 type SkillData = {
@@ -127,7 +127,7 @@ const SkillDetail = () => {
       <Navbar />
       <div className="max-w-5xl mx-auto px-6 pt-12 pb-16">
         {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <Link to="/" className="hover:text-foreground transition-colors">skills</Link>
           <span>/</span>
           <span className="hover:text-foreground transition-colors cursor-pointer">{skill.owner}</span>
@@ -140,13 +140,13 @@ const SkillDetail = () => {
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-12">
           {/* Main content */}
           <div>
-            <h1 className="text-3xl font-semibold text-foreground mb-4">{skill.name}</h1>
+            <h1 className="mb-4 break-words text-3xl font-semibold text-foreground">{skill.name}</h1>
 
             {/* Install command */}
-            <div className="flex items-center gap-2 bg-secondary/50 rounded-lg px-4 py-3 mb-6">
-              <span className="text-muted-foreground">$</span>
-              <span className="text-sm text-foreground flex-1 truncate">{installCmd}</span>
-              <button onClick={handleCopy} className="text-muted-foreground hover:text-foreground transition-colors">
+            <div className="mb-6 flex items-start gap-3 rounded-lg bg-secondary/50 px-4 py-3">
+              <span className="pt-0.5 text-muted-foreground">$</span>
+              <span className="min-w-0 flex-1 break-all whitespace-pre-wrap text-sm leading-relaxed text-foreground">{installCmd}</span>
+              <button onClick={handleCopy} className="shrink-0 text-muted-foreground transition-colors hover:text-foreground">
                 <Copy className="w-4 h-4" />
               </button>
             </div>
@@ -167,18 +167,18 @@ const SkillDetail = () => {
 
             {/* SKILL.md */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4 border-b border-border pb-3">
-              <span>📄</span>
+              <FileText className="h-4 w-4" aria-hidden="true" />
               <span className="font-mono">SKILL.md</span>
             </div>
 
             <div className="prose prose-invert prose-sm max-w-none">
               {skill.skillMd.split("\n").map((line, i) => {
-                if (line.startsWith("# ")) return <h1 key={i} className="text-2xl font-semibold text-foreground mt-8 mb-4">{line.slice(2)}</h1>;
-                if (line.startsWith("## ")) return <h2 key={i} className="text-lg font-semibold text-foreground mt-8 mb-3">{line.slice(3)}</h2>;
-                if (line.startsWith("- ")) return <li key={i} className="text-sm text-muted-foreground ml-4 mb-1">{line.slice(2)}</li>;
+                if (line.startsWith("# ")) return <h1 key={i} className="mt-8 mb-4 break-words text-2xl font-semibold text-foreground">{line.slice(2)}</h1>;
+                if (line.startsWith("## ")) return <h2 key={i} className="mt-8 mb-3 break-words text-lg font-semibold text-foreground">{line.slice(3)}</h2>;
+                if (line.startsWith("- ")) return <li key={i} className="mb-1 ml-4 break-words text-sm text-muted-foreground">{line.slice(2)}</li>;
                 if (line.startsWith("**")) return <p key={i} className="text-sm font-semibold text-foreground mb-2">{line.replace(/\*\*/g, "")}</p>;
                 if (line.trim() === "") return <div key={i} className="h-2" />;
-                return <p key={i} className="text-sm text-muted-foreground mb-2">{line}</p>;
+                return <p key={i} className="mb-2 break-words text-sm text-muted-foreground">{line}</p>;
               })}
             </div>
           </div>
@@ -194,7 +194,7 @@ const SkillDetail = () => {
               <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1">
                 Repository <ExternalLink className="w-3 h-3" />
               </h3>
-              <span className="text-sm font-mono text-foreground">{skill.repo}</span>
+              <span className="break-all text-sm font-mono text-foreground">{skill.repo}</span>
             </div>
 
             <div>

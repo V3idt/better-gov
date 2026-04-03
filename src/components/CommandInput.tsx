@@ -13,10 +13,10 @@ const CommandInput = () => {
   };
 
   return (
-    <div className="flex items-center justify-between bg-secondary border border-border rounded-lg px-4 py-3 max-w-md w-full">
-      <div className="text-sm text-muted-foreground font-mono">
+    <div className="flex w-full max-w-md items-start justify-between gap-3 rounded-lg border border-border bg-secondary px-4 py-3">
+      <div className="min-w-0 flex-1 text-sm text-muted-foreground font-mono leading-relaxed">
         <span className="text-muted-foreground">$ </span>
-        <span className="text-foreground">{command}</span>
+        <span className="break-all whitespace-pre-wrap text-foreground">{command}</span>
       </div>
       <button
         onClick={handleCopy}

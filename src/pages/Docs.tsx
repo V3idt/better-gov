@@ -4,6 +4,9 @@ import { Link } from "react-router-dom";
 
 type DocTab = "overview" | "cli" | "faq";
 
+const commandBlockClass =
+  "mb-4 rounded-lg bg-secondary/50 px-5 py-4 font-mono text-sm leading-relaxed text-foreground break-all whitespace-pre-wrap";
+
 const overviewContent = (
   <>
     <h1 className="text-3xl font-semibold text-foreground mb-4">Documentation</h1>
@@ -27,7 +30,7 @@ const overviewContent = (
     <p className="text-muted-foreground mb-4">
       To install a skill, use the <code className="text-sm bg-secondary px-1.5 py-0.5 rounded font-mono">skills</code> CLI:
     </p>
-    <div className="bg-secondary/50 rounded-lg px-5 py-4 mb-4 font-mono text-sm text-foreground">
+    <div className={commandBlockClass}>
       npx skills add vercel-labs/agent-skills
     </div>
     <p className="text-muted-foreground mb-10">
@@ -71,7 +74,7 @@ const cliContent = (
     <p className="text-muted-foreground mb-4">
       The CLI can be run directly with npx—no installation required:
     </p>
-    <div className="bg-secondary/50 rounded-lg px-5 py-4 mb-10 font-mono text-sm text-foreground">
+    <div className={`${commandBlockClass} mb-10`}>
       npx skills add &lt;skill-name&gt;
     </div>
 
@@ -79,7 +82,7 @@ const cliContent = (
     <p className="text-muted-foreground mb-4">
       Install a skill by specifying the owner and skill name:
     </p>
-    <div className="bg-secondary/50 rounded-lg px-5 py-4 mb-4 font-mono text-sm text-foreground">
+    <div className={commandBlockClass}>
       npx skills add vercel-labs/agent-skills
     </div>
     <p className="text-muted-foreground mb-10">
@@ -90,7 +93,7 @@ const cliContent = (
     <p className="text-muted-foreground mb-4">
       Install the agent skills collection:
     </p>
-    <div className="bg-secondary/50 rounded-lg px-5 py-4 mb-10 font-mono text-sm text-foreground">
+    <div className={`${commandBlockClass} mb-10`}>
       npx skills add vercel-labs/agent-skills
     </div>
 
@@ -168,7 +171,7 @@ const Docs = () => {
     <div className="min-h-screen bg-background text-foreground font-mono">
       <Navbar />
       <div className="max-w-5xl mx-auto px-6 pt-12 pb-16">
-        <div className="grid grid-cols-[180px_1fr] gap-12">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-[180px_minmax(0,1fr)] md:gap-12">
           {/* Sidebar */}
           <nav className="flex flex-col gap-1 pt-2">
             {tabs.map((tab) => (
@@ -187,7 +190,7 @@ const Docs = () => {
           </nav>
 
           {/* Content */}
-          <div className="max-w-2xl">{content}</div>
+          <div className="min-w-0 max-w-2xl break-words">{content}</div>
         </div>
       </div>
     </div>

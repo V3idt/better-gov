@@ -95,7 +95,7 @@ const LeaderboardTable = () => {
       </div>
 
       {/* Table Header */}
-      <div className="grid grid-cols-[40px_1fr_80px] text-xs text-muted-foreground uppercase tracking-wider mb-2 px-2">
+      <div className="mb-2 grid grid-cols-[32px_minmax(0,1fr)_72px] px-2 text-xs uppercase tracking-wider text-muted-foreground sm:grid-cols-[40px_minmax(0,1fr)_80px]">
         <span>#</span>
         <span>Skill</span>
         <span className="text-right">Installs</span>
@@ -107,14 +107,16 @@ const LeaderboardTable = () => {
           <Link
             key={`${skill.rank}-${skill.repo}-${skill.name}`}
             to={`/${skill.repo}/${skill.name}`}
-            className="grid grid-cols-[40px_1fr_80px] items-center py-3.5 px-2 hover:bg-secondary/50 transition-colors cursor-pointer group"
+            className="grid grid-cols-[32px_minmax(0,1fr)_72px] items-start px-2 py-3.5 transition-colors hover:bg-secondary/50 group sm:grid-cols-[40px_minmax(0,1fr)_80px]"
           >
             <span className="text-sm text-muted-foreground">{skill.rank}</span>
-            <div className="flex items-baseline gap-2 min-w-0">
-              <span className="text-sm font-semibold text-foreground">{skill.name}</span>
-              <span className="text-xs text-muted-foreground truncate font-mono">{skill.repo}</span>
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-2">
+                <span className="break-words text-sm font-semibold text-foreground">{skill.name}</span>
+                <span className="min-w-0 break-all text-xs font-mono text-muted-foreground">{skill.repo}</span>
+              </div>
             </div>
-            <span className="text-sm text-muted-foreground text-right font-mono">{skill.installs}</span>
+            <span className="text-right font-mono text-xs text-muted-foreground sm:text-sm">{skill.installs}</span>
           </Link>
         ))}
       </div>
