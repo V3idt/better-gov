@@ -171,7 +171,7 @@ const SkillDetail = () => {
     }
 
     setAiRole(sessionQuery.data.person.primaryRole === "staff" ? "staff" : "student");
-  }, [sessionQuery.data?.authenticated, sessionQuery.data?.person.primaryRole]);
+  }, [sessionQuery.data?.authenticated, sessionQuery.data?.person?.primaryRole]);
 
   const aiQuery = useQuery({
     queryKey: proposition
