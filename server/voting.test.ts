@@ -251,6 +251,6 @@ describe("voting database", () => {
 
     expect(status.activeCount).toBe(0);
     expect(status.canPublishNow).toBe(false);
-    expect(status.waitingReason).toContain("provider key");
+    expect(status.waitingReason).toBe("Automatic publishing is temporarily unavailable right now.");
   });
 });

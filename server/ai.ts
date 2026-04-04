@@ -1431,7 +1431,7 @@ export const reconcileAutomaticAiPolicies = async ({
         ...status,
         canPublishNow: false,
         waitingReason:
-          status.waitingReason ?? "Automatic AI publishing is paused until at least one AI provider key is configured.",
+          status.waitingReason ?? "Automatic publishing is temporarily unavailable right now.",
       };
     }
 
