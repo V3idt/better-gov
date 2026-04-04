@@ -103,12 +103,16 @@ describe("voting database", () => {
 
     const created = createProposition(db, verified.session.id, propositionInput("Keep The Student Center Open Later"), "127.0.0.1");
     const propositions = listPropositions(db, verified.session.id);
+    const createdSummary = propositions.propositions.find((item) => item.id === created.proposition.id);
+    const seededSummary = propositions.propositions.find((item) => item.id === "housing:residence-hall-rent-cap");
 
     expect(created.proposition.title).toBe("Keep The Student Center Open Later");
     expect(created.proposition.status).toBe("open");
     expect(created.proposition.sponsor).toBe("Leila Mekonnen");
     expect(created.proposition.path.startsWith("/campus/keep-the-student-center-open-later")).toBe(true);
-    expect(propositions.propositions.some((item) => item.id === created.proposition.id)).toBe(true);
+    expect(createdSummary?.isUserPosted).toBe(true);
+    expect(seededSummary?.isUserPosted).toBe(false);
+    expect((createdSummary?.displayOrder ?? 0) > (seededSummary?.displayOrder ?? 0)).toBe(true);
   });
 
   it("rate limits repeated proposition submissions from the same account", async () => {

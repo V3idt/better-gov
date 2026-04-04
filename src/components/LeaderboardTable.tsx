@@ -13,6 +13,7 @@ import { formatSupportPercent } from "@/lib/voting";
 
 type Tab = "all" | "for_you" | "closing" | "newest";
 type SortMode = "published" | "support-asc" | "support-desc";
+const FEATURED_PROPOSITION_SLUG = "residence-hall-rent-cap";
 
 const LeaderboardTable = () => {
   const [activeTab, setActiveTab] = useState<Tab>("all");
@@ -68,7 +69,24 @@ const LeaderboardTable = () => {
     }
 
     return [...filtered].sort((left, right) => {
+      if (activeTab === "all") {
+        const leftFeatured = left.slug === FEATURED_PROPOSITION_SLUG;
+        const rightFeatured = right.slug === FEATURED_PROPOSITION_SLUG;
+
+        if (leftFeatured !== rightFeatured) {
+          return leftFeatured ? -1 : 1;
+        }
+      }
+
+      if (left.isUserPosted !== right.isUserPosted) {
+        return left.isUserPosted ? 1 : -1;
+      }
+
       if (sortMode === "published") {
+        if (left.displayOrder !== right.displayOrder) {
+          return left.displayOrder - right.displayOrder;
+        }
+
         const leftPublished = new Date(left.postedAt).getTime();
         const rightPublished = new Date(right.postedAt).getTime();
 
@@ -97,6 +115,10 @@ const LeaderboardTable = () => {
       }
 
       if (leftSupport === rightSupport) {
+        if (left.isUserPosted !== right.isUserPosted) {
+          return left.isUserPosted ? 1 : -1;
+        }
+
         const leftPublished = new Date(left.postedAt).getTime();
         const rightPublished = new Date(right.postedAt).getTime();
         return rightPublished - leftPublished;

@@ -56,6 +56,8 @@ export type PropositionSummary = {
   sponsor: string;
   supportPercent: number | null;
   turnoutCount: number;
+  displayOrder: number;
+  isUserPosted: boolean;
   personalizationReason: string | null;
 };
 

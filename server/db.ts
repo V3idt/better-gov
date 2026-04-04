@@ -127,6 +127,7 @@ type PropositionRow = {
   posted_at: string;
   brief: string;
   display_order: number;
+  is_user_posted: number;
 };
 
 type VoteRow = {
@@ -578,9 +579,11 @@ const propositionSelect = `
     d.tldr,
     d.posted_at,
     d.brief,
-    d.display_order
+    d.display_order,
+    CASE WHEN pa.policy_id IS NULL THEN 0 ELSE 1 END AS is_user_posted
   FROM policies p
   INNER JOIN proposition_details d ON d.policy_id = p.id
+  LEFT JOIN proposition_authorship pa ON pa.policy_id = p.id
 `;
 
 const loadPropositionById = (db: Database, propositionId: string) => {
@@ -1173,6 +1176,8 @@ const toPropositionSummary = (
   sponsor: row.sponsor,
   supportPercent: supportPercentForCounts(counts),
   turnoutCount: counts.total,
+  displayOrder: row.display_order,
+  isUserPosted: row.is_user_posted === 1,
   personalizationReason,
 });
 
