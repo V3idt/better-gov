@@ -160,6 +160,8 @@ const randomId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
+const hasText = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+
 const maskEmail = (value: string) => {
   const [localPart, domain] = normalizeEmail(value).split("@");
   if (!localPart || !domain) {
@@ -183,8 +185,13 @@ const hashOtpCode = (email: string, code: string) =>
     .update(`${normalizeEmail(email)}:${code}:${OTP_PEPPER}`)
     .digest("hex");
 
-const secureHashMatch = (storedHash: string, candidateHash: string) =>
-  timingSafeEqual(Buffer.from(storedHash, "hex"), Buffer.from(candidateHash, "hex"));
+const secureHashMatch = (storedHash: string, candidateHash: string) => {
+  if (storedHash.length !== candidateHash.length) {
+    return false;
+  }
+
+  return timingSafeEqual(Buffer.from(storedHash, "hex"), Buffer.from(candidateHash, "hex"));
+};
 
 const createOtpCode = () => randomInt(0, 10 ** OTP_LENGTH).toString().padStart(OTP_LENGTH, "0");
 
@@ -502,6 +509,10 @@ export const getSession = (db: Database, sessionId: string | null): SessionRespo
 };
 
 export const requestSignInCode = (db: Database, email: string): RequestSignInCodeResponse => {
+  if (!hasText(email)) {
+    throw new VotingDatabaseError("invalid_email", "Enter your university email.");
+  }
+
   const normalizedEmail = normalizeEmail(email);
   if (!isUniversityEmail(normalizedEmail)) {
     throw new VotingDatabaseError("invalid_email", `Use your @${ALLOWED_EMAIL_DOMAIN} account.`);
@@ -555,6 +566,14 @@ export const requestSignInCode = (db: Database, email: string): RequestSignInCod
 
 export const verifySignInCode = (db: Database, email: string, code: string): VerifySignInCodeResponse =>
   db.transaction(() => {
+    if (!hasText(email)) {
+      throw new VotingDatabaseError("invalid_email", "Enter your university email.");
+    }
+
+    if (!hasText(code)) {
+      throw new VotingDatabaseError("invalid_code", "Enter the 6-digit code.");
+    }
+
     const normalizedEmail = normalizeEmail(email);
     const normalizedCode = code.trim();
     if (!isUniversityEmail(normalizedEmail)) {

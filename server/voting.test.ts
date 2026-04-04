@@ -77,4 +77,8 @@ describe("voting database", () => {
 
     expect(() => verifySignInCode(db, "hana.tadesse@university.edu", "000000")).toThrow(VotingDatabaseError);
   });
+
+  it("rejects empty email requests with a validation error instead of a server crash", () => {
+    expect(() => requestSignInCode(db, "")).toThrow(VotingDatabaseError);
+  });
 });

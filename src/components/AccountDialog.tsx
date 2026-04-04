@@ -68,9 +68,17 @@ const AccountDialog = ({ open, onOpenChange }: AccountDialogProps) => {
   });
 
   const requestError =
-    requestCodeMutation.error instanceof VotingApiError ? requestCodeMutation.error.message : "";
+    requestCodeMutation.error instanceof VotingApiError
+      ? requestCodeMutation.error.message
+      : requestCodeMutation.error instanceof Error
+        ? requestCodeMutation.error.message
+        : "";
   const verifyError =
-    verifyCodeMutation.error instanceof VotingApiError ? verifyCodeMutation.error.message : "";
+    verifyCodeMutation.error instanceof VotingApiError
+      ? verifyCodeMutation.error.message
+      : verifyCodeMutation.error instanceof Error
+        ? verifyCodeMutation.error.message
+        : "";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -107,7 +115,12 @@ const AccountDialog = ({ open, onOpenChange }: AccountDialogProps) => {
               />
             </div>
             {requestError ? <p className="text-xs text-red-500">{requestError}</p> : null}
-            <Button type="submit" disabled={requestCodeMutation.isPending} variant="outline" className={dialogButtonClass}>
+            <Button
+              type="submit"
+              disabled={requestCodeMutation.isPending || email.trim().length === 0}
+              variant="outline"
+              className={dialogButtonClass}
+            >
               {requestCodeMutation.isPending ? "Sending code" : "Send code"}
             </Button>
           </form>

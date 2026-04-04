@@ -112,6 +112,9 @@ const handleSubmitVote = async (request: Request, policyId: string) => {
 const handleRequestCode = async (request: Request) => {
   try {
     const body = await parseJson<RequestSignInCodeInput>(request);
+    if (typeof body.email !== "string") {
+      throw new VotingDatabaseError("invalid_email", "Enter your university email.");
+    }
     const payload = requestSignInCode(db, body.email);
     return json(payload, 200);
   } catch (error) {
@@ -122,6 +125,12 @@ const handleRequestCode = async (request: Request) => {
 const handleVerifyCode = async (request: Request) => {
   try {
     const body = await parseJson<VerifySignInCodeInput>(request);
+    if (typeof body.email !== "string") {
+      throw new VotingDatabaseError("invalid_email", "Enter your university email.");
+    }
+    if (typeof body.code !== "string") {
+      throw new VotingDatabaseError("invalid_code", "Enter the 6-digit code.");
+    }
     const payload = verifySignInCode(db, body.email, body.code);
     return json(payload, 200, {
       "Set-Cookie": buildSessionCookie(payload.session.id),
