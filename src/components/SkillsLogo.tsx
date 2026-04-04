@@ -1,20 +1,23 @@
-const WORDMARK = ` |          |   |                                  
- __ \\   _ \\ __| __|  _ \\  __|     _\` |  _ \\\\ \\   / 
- |   |  __/ |   |    __/ |_____| (   | (   |\\ \\ /  
-_.__/ \\___|\\__|\\__|\\___|_|      \\__, |\\___/  \\_/   
-                                |___/              `;
+const WORDMARK = `██████╗ ███████╗████████╗████████╗███████╗██████╗      ██████╗  ██████╗ ██╗   ██╗
+██╔══██╗██╔════╝╚══██╔══╝╚══██╔══╝██╔════╝██╔══██╗    ██╔════╝ ██╔═══██╗██║   ██║
+██████╔╝█████╗     ██║      ██║   █████╗  ██████╔╝    ██║  ███╗██║   ██║██║   ██║
+██╔══██╗██╔══╝     ██║      ██║   ██╔══╝  ██╔══██╗    ██║   ██║██║   ██║╚██╗ ██╔╝
+██████╔╝███████╗   ██║      ██║   ███████╗██║  ██║    ╚██████╔╝╚██████╔╝ ╚█████╔╝ 
+╚═════╝ ╚══════╝   ╚═╝      ╚═╝   ╚══════╝╚═╝  ╚═╝     ╚═════╝  ╚═════╝   ╚════╝  `;
 
 const SkillsLogo = () => {
   return (
     <div className="flex w-full select-none items-start justify-center overflow-hidden lg:justify-start" aria-label="better-gov">
-      <div className="relative w-fit max-w-full overflow-hidden">
+      <div className="relative max-w-[560px] overflow-hidden lg:max-w-[700px]">
         <pre
-          className="pointer-events-none translate-x-px translate-y-px whitespace-pre font-mono text-[10px] leading-none tracking-[-0.04em] text-muted-foreground sm:text-[12px] md:text-[14px] lg:text-[16px]"
+          className="pointer-events-none translate-x-px translate-y-px whitespace-pre text-[5px] leading-[125%] tracking-[-0.55px] text-muted-foreground sm:text-[6px] md:text-[7px] lg:text-[8px]"
+          style={{ fontFamily: '"Fira Mono", "JetBrains Mono", Consolas, Monaco, monospace' }}
         >
           {WORDMARK}
         </pre>
         <pre
-          className="pointer-events-none absolute left-0 top-0 whitespace-pre font-mono text-[10px] leading-none tracking-[-0.04em] text-foreground sm:text-[12px] md:text-[14px] lg:text-[16px]"
+          className="pointer-events-none absolute left-0 top-0 whitespace-pre text-[5px] leading-[125%] tracking-[-0.55px] text-foreground sm:text-[6px] md:text-[7px] lg:text-[8px]"
+          style={{ fontFamily: '"Fira Mono", "JetBrains Mono", Consolas, Monaco, monospace' }}
         >
           {WORDMARK}
         </pre>
