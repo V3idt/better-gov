@@ -18,7 +18,7 @@ const FEATURED_PROPOSITION_SLUG = "residence-hall-rent-cap";
 const aiBadgeClassName =
   "border-blue-500/40 bg-blue-500/10 text-blue-400 shadow-[0_0_0_1px_rgba(59,130,246,0.16)]";
 const trendingBadgeClassName =
-  "border-amber-500/40 bg-amber-500/10 text-amber-400 shadow-[0_0_0_1px_rgba(245,158,11,0.16)]";
+  "border-green-500/40 bg-green-500/10 text-green-400 shadow-[0_0_0_1px_rgba(34,197,94,0.16)]";
 
 const LeaderboardTable = () => {
   const [activeTab, setActiveTab] = useState<Tab>("all");
