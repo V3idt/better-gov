@@ -80,8 +80,7 @@ const LeaderboardTable = () => {
     });
   }, [filtered, sortMode]);
 
-  const supportSortLabel =
-    sortMode === "published" ? "Support" : sortMode === "support-asc" ? "Support ↑" : "Support ↓";
+  const supportSortLabel = "Support";
   const SupportSortIcon =
     sortMode === "support-asc" ? ArrowUp : sortMode === "support-desc" ? ArrowDown : null;
 
