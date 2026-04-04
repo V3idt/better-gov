@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { Copy, FileText } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import AccountDialog from "@/components/AccountDialog";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,7 +19,9 @@ import { ballotItems, findBallotItemByPath } from "@/lib/ballotItems";
 import type { VoteChoice } from "@/lib/ballotItems";
 import { policyIdForItem, VotingApiError } from "@/lib/voting";
 import {
+  getSession,
   getVoteStatus,
+  sessionQueryKey,
   submitVote,
 } from "@/lib/voting-api";
 
@@ -74,12 +78,19 @@ const SkillDetail = () => {
   const policyId = useMemo(() => policyIdForItem(item), [item]);
 
   const [copied, setCopied] = useState(false);
+  const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [pendingVote, setPendingVote] = useState<VoteChoice | null>(null);
   const sharePath = `/${item.jurisdictionSlug}/${item.slug}`;
+
+  const sessionQuery = useQuery({
+    queryKey: sessionQueryKey,
+    queryFn: getSession,
+  });
 
   const voteQuery = useQuery({
     queryKey: ["vote-status", policyId],
     queryFn: () => getVoteStatus(policyId),
+    enabled: sessionQuery.data?.authenticated === true,
   });
 
   const submitMutation = useMutation({
@@ -97,12 +108,12 @@ const SkillDetail = () => {
   };
 
   const currentVote = voteQuery.data?.vote ?? null;
-  const identitySources = voteQuery.data?.identitySources ?? [];
-  const person = voteQuery.data?.person ?? null;
   const voteMessage = currentVote
     ? `Recorded vote: ${currentVote.choice} at ${new Date(currentVote.updatedAt).toLocaleString()}`
     : "No vote recorded for this policy yet.";
   const pendingVoteLabel = pendingVote ? pendingVote.charAt(0).toUpperCase() + pendingVote.slice(1) : "";
+  const isAuthenticated = sessionQuery.data?.authenticated === true;
+  const activePerson = sessionQuery.data?.authenticated ? sessionQuery.data.person : null;
 
   const errorMessage =
     submitMutation.error instanceof VotingApiError
@@ -122,6 +133,7 @@ const SkillDetail = () => {
   return (
     <div className="min-h-screen bg-background text-foreground font-mono">
       <Navbar />
+      <AccountDialog open={accountDialogOpen} onOpenChange={setAccountDialogOpen} />
       <AlertDialog open={pendingVote !== null} onOpenChange={(open) => !open && setPendingVote(null)}>
         <AlertDialogContent className="border-border bg-background text-foreground">
           <AlertDialogHeader>
@@ -178,57 +190,64 @@ const SkillDetail = () => {
             </div>
 
             <div className="mb-6 rounded-lg border border-border p-5">
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <div>
-                  <h3 className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Vote on this item</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Choose your position. The server resolves you to one canonical person record.
-                  </p>
-                </div>
-                {copied ? (
-                  <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Link copied</span>
-                ) : null}
-              </div>
-              <div className="mb-4 rounded border border-border bg-secondary/40 px-4 py-3 text-xs text-muted-foreground">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span>person_id</span>
-                  <span className="font-mono text-foreground">{person?.id ?? "resolving..."}</span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {identitySources.map((source) => (
-                    <span key={`${source.type}:${source.value}`} className="rounded bg-background px-2 py-0.5 font-mono text-foreground">
-                      {source.type}: {source.value}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {(["approve", "reject", "abstain"] as VoteChoice[]).map((choice) => {
-                  const isActive = currentVote?.choice === choice;
-
-                  return (
-                    <button
-                      key={choice}
-                      onClick={() => setPendingVote(choice)}
-                      disabled={submitMutation.isPending}
-                      className={`rounded border px-4 py-3 text-left text-sm uppercase tracking-[0.14em] transition-colors ${voteToneClass(
-                        choice,
-                        isActive,
-                      )} ${submitMutation.isPending ? "cursor-not-allowed opacity-60" : ""}`}
-                    >
-                      {choice}
-                    </button>
-                  );
-                })}
-              </div>
-              {loadError ? <p className="mt-2 text-xs text-red-500">{loadError}</p> : null}
-              {currentVote ? (
-                <p className={`mt-4 text-xs uppercase tracking-[0.16em] ${savedVoteToneClass(currentVote.choice)}`}>
-                  Saved vote: {currentVote.choice}
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
+                <h3 className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Vote on this item</h3>
+                <p className="text-sm text-muted-foreground">
+                  {isAuthenticated
+                    ? `Signed in as ${activePerson?.displayName}. You can record one vote on this proposal.`
+                    : "Sign in with a university account to record one vote on this proposal."}
                 </p>
+              </div>
+              {copied ? (
+                <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Link copied</span>
               ) : null}
-              <p className="mt-2 text-xs text-muted-foreground">{voteMessage}</p>
-              {errorMessage ? <p className="mt-2 text-xs text-red-500">{errorMessage}</p> : null}
+            </div>
+              {isAuthenticated ? (
+                <>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {(["approve", "reject", "abstain"] as VoteChoice[]).map((choice) => {
+                      const isActive = currentVote?.choice === choice;
+
+                      return (
+                        <button
+                          key={choice}
+                          onClick={() => setPendingVote(choice)}
+                          disabled={submitMutation.isPending}
+                          className={`rounded border px-4 py-3 text-left text-sm uppercase tracking-[0.14em] transition-colors ${voteToneClass(
+                            choice,
+                            isActive,
+                          )} ${submitMutation.isPending ? "cursor-not-allowed opacity-60" : ""}`}
+                        >
+                          {choice}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {loadError ? <p className="mt-2 text-xs text-red-500">{loadError}</p> : null}
+                  {currentVote ? (
+                    <p className={`mt-4 text-xs uppercase tracking-[0.16em] ${savedVoteToneClass(currentVote.choice)}`}>
+                      Saved vote: {currentVote.choice}
+                    </p>
+                  ) : null}
+                  <p className="mt-2 text-xs text-muted-foreground">{voteMessage}</p>
+                  {errorMessage ? <p className="mt-2 text-xs text-red-500">{errorMessage}</p> : null}
+                </>
+              ) : (
+                <div className="rounded border border-border bg-secondary/30 px-4 py-4">
+                  <p className="text-sm text-muted-foreground">
+                    Use your university email to confirm your identity before voting. Accounts are tied to one campus record so duplicate votes stay blocked at the database level.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-4 border-border bg-secondary/50 font-mono text-xs uppercase tracking-[0.16em] text-foreground hover:bg-secondary"
+                    onClick={() => setAccountDialogOpen(true)}
+                  >
+                    Sign in to vote
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div className="border border-border rounded-lg p-5 mb-6">

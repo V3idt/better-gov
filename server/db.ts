@@ -1,28 +1,70 @@
 import { Database } from "bun:sqlite";
+import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { ballotItems } from "../src/lib/ballotItems.ts";
 import {
   policyIdForItem,
   policyStatusFromBallotStatus,
-  type IdentitySource,
-  type IdentitySourceType,
   type Person,
   type PolicyRecord,
+  type RequestSignInCodeResponse,
+  type SessionResponse,
   type SessionRecord,
+  type SignOutResponse,
   type SubmitVoteResponse,
+  type VerifySignInCodeResponse,
   type VoteChoice,
   type VoteRecord,
   type VoteStatusResponse,
-  type VerifyIdentityInput,
-  type VerifyIdentityResponse,
 } from "../src/lib/voting.ts";
 
 export const SESSION_COOKIE_NAME = "better-gov.session";
 export const DEFAULT_DB_PATH = process.env.BETTER_GOV_DB_PATH ?? "/tmp/better-gov.sqlite";
-const DEMO_PERSON_ID = "person_demo";
-const DEMO_SESSION_ID = "session_demo";
+
 const MIGRATION_SQL = readFileSync(new URL("./migrations/001_init.sql", import.meta.url), "utf8");
+const OTP_LENGTH = 6;
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const OTP_MAX_FAILED_ATTEMPTS = 5;
+const OTP_PEPPER = process.env.BETTER_GOV_OTP_PEPPER ?? "better-gov-local-dev-pepper";
+const ALLOWED_EMAIL_DOMAIN = (process.env.BETTER_GOV_ALLOWED_EMAIL_DOMAIN ?? "university.edu").toLowerCase();
+const ENABLE_DEV_CODE_ECHO = process.env.NODE_ENV !== "production" || process.env.BETTER_GOV_DEV_AUTH_CODES === "1";
+
+const ROSTER_MEMBERS = [
+  {
+    personId: "person_rahel_bekele",
+    displayName: "Rahel Bekele",
+    role: "dual" as const,
+    universityEmail: "rahel.bekele@university.edu",
+    studentId: "U-10204",
+    staffId: "F-20014",
+  },
+  {
+    personId: "person_leila_mekonnen",
+    displayName: "Leila Mekonnen",
+    role: "student" as const,
+    universityEmail: "leila.mekonnen@university.edu",
+    studentId: "U-10412",
+    staffId: null,
+  },
+  {
+    personId: "person_samuel_abebe",
+    displayName: "Samuel Abebe",
+    role: "student" as const,
+    universityEmail: "samuel.abebe@university.edu",
+    studentId: "U-10733",
+    staffId: null,
+  },
+  {
+    personId: "person_hana_tadesse",
+    displayName: "Hana Tadesse",
+    role: "staff" as const,
+    universityEmail: "hana.tadesse@university.edu",
+    studentId: null,
+    staffId: "F-20408",
+  },
+] as const;
 
 type PersonRow = {
   id: string;
@@ -30,13 +72,6 @@ type PersonRow = {
   primary_role: Person["primaryRole"];
   created_at: string;
   updated_at: string;
-};
-
-type IdentityLinkRow = {
-  identity_type: IdentitySourceType;
-  identity_value: string;
-  verified_at: string;
-  person_id: string;
 };
 
 type SessionRow = {
@@ -67,29 +102,50 @@ type VoteRow = {
   updated_at: string;
 };
 
+type RosterMemberRow = {
+  person_id: string;
+  university_email: string;
+  student_id: string | null;
+  staff_id: string | null;
+  role: Person["primaryRole"];
+  status: "active" | "inactive";
+  created_at: string;
+  updated_at: string;
+};
+
+type EmailCodeRow = {
+  id: string;
+  university_email: string;
+  code_hash: string;
+  expires_at: string;
+  consumed_at: string | null;
+  failed_attempts: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type SessionContext = {
   session: SessionRecord;
   person: Person;
-  identitySources: IdentitySource[];
-  setCookie?: string;
 };
 
 export type VotingDatabase = Database;
 
 export class VotingDatabaseError extends Error {
   code:
+    | "authentication_required"
+    | "invalid_email"
+    | "invalid_code"
+    | "code_expired"
+    | "rate_limited"
     | "policy_not_found"
     | "policy_closed"
-    | "invalid_identity"
     | "invalid_vote_choice"
     | "invalid_request"
     | "invalid_session"
     | "invalid_state";
 
-  constructor(
-    code: VotingDatabaseError["code"],
-    message: string,
-  ) {
+  constructor(code: VotingDatabaseError["code"], message: string) {
     super(message);
     this.name = "VotingDatabaseError";
     this.code = code;
@@ -98,32 +154,39 @@ export class VotingDatabaseError extends Error {
 
 const now = () => new Date().toISOString();
 
+const toFutureIso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
+
 const randomId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 
-const normalizeIdentityValue = (type: IdentitySourceType, value: string) => {
-  const trimmed = value.trim();
-  return type === "email_otp" ? trimmed.toLowerCase() : trimmed;
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+
+const maskEmail = (value: string) => {
+  const [localPart, domain] = normalizeEmail(value).split("@");
+  if (!localPart || !domain) {
+    return value;
+  }
+
+  if (localPart.length <= 2) {
+    return `${localPart[0] ?? "*"}*@${domain}`;
+  }
+
+  return `${localPart.slice(0, 2)}${"*".repeat(Math.max(localPart.length - 2, 2))}@${domain}`;
 };
 
-const uniqueIdentitySources = (input: VerifyIdentityInput) => {
-  const items: Array<[IdentitySourceType, string | undefined]> = [
-    ["student_id", input.studentId],
-    ["staff_id", input.staffId],
-    ["email_otp", input.emailOtp],
-  ];
-
-  return items
-    .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
-    .map(([type, value]) => ({
-      type,
-      value: normalizeIdentityValue(type, value ?? ""),
-      verifiedAt: now(),
-    }))
-    .filter(
-      (source, index, sources) =>
-        sources.findIndex((candidate) => candidate.type === source.type && candidate.value === source.value) === index,
-    );
+const isUniversityEmail = (value: string) => {
+  const email = normalizeEmail(value);
+  return email.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`) && email.includes("@");
 };
+
+const hashOtpCode = (email: string, code: string) =>
+  createHash("sha256")
+    .update(`${normalizeEmail(email)}:${code}:${OTP_PEPPER}`)
+    .digest("hex");
+
+const secureHashMatch = (storedHash: string, candidateHash: string) =>
+  timingSafeEqual(Buffer.from(storedHash, "hex"), Buffer.from(candidateHash, "hex"));
+
+const createOtpCode = () => randomInt(0, 10 ** OTP_LENGTH).toString().padStart(OTP_LENGTH, "0");
 
 const toPerson = (row: PersonRow): Person => ({
   id: row.id,
@@ -160,23 +223,73 @@ const toVote = (row: VoteRow): VoteRecord => ({
   updatedAt: row.updated_at,
 });
 
-const toIdentitySource = (row: IdentityLinkRow): IdentitySource => ({
-  type: row.identity_type,
-  value: row.identity_value,
-  verifiedAt: row.verified_at,
-});
+const voteSql = `
+  INSERT INTO votes (policy_id, person_id, choice, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?)
+  ON CONFLICT(policy_id, person_id)
+  DO UPDATE SET choice = excluded.choice, updated_at = excluded.updated_at
+`;
 
-const identitySourceRowsForPerson = (db: Database, personId: string) =>
-  db
-    .prepare(
-      `
-        SELECT identity_type, identity_value, verified_at, person_id
-        FROM identity_links
-        WHERE person_id = ?
-        ORDER BY verified_at ASC, identity_type ASC, identity_value ASC
-      `,
-    )
-    .all(personId) as IdentityLinkRow[];
+const personSql = `
+  INSERT INTO people (id, display_name, primary_role, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?)
+  ON CONFLICT(id) DO UPDATE SET
+    display_name = excluded.display_name,
+    primary_role = excluded.primary_role,
+    updated_at = excluded.updated_at
+`;
+
+const sessionSql = `
+  INSERT INTO sessions (id, person_id, created_at, updated_at)
+  VALUES (?, ?, ?, ?)
+  ON CONFLICT(id) DO UPDATE SET
+    person_id = excluded.person_id,
+    updated_at = excluded.updated_at
+`;
+
+const policySql = `
+  INSERT INTO policies (
+    id,
+    slug,
+    jurisdiction_slug,
+    title,
+    status,
+    closes_at,
+    source_path,
+    created_at,
+    updated_at
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(id) DO UPDATE SET
+    slug = excluded.slug,
+    jurisdiction_slug = excluded.jurisdiction_slug,
+    title = excluded.title,
+    status = excluded.status,
+    closes_at = excluded.closes_at,
+    source_path = excluded.source_path,
+    updated_at = excluded.updated_at
+`;
+
+const rosterMemberSql = `
+  INSERT INTO roster_members (
+    person_id,
+    university_email,
+    student_id,
+    staff_id,
+    role,
+    status,
+    created_at,
+    updated_at
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(person_id) DO UPDATE SET
+    university_email = excluded.university_email,
+    student_id = excluded.student_id,
+    staff_id = excluded.staff_id,
+    role = excluded.role,
+    status = excluded.status,
+    updated_at = excluded.updated_at
+`;
 
 const loadPerson = (db: Database, personId: string) => {
   const row = db
@@ -234,66 +347,34 @@ const loadVote = (db: Database, policyId: string, personId: string) => {
   return row ? toVote(row) : null;
 };
 
-const voteSql = `
-  INSERT INTO votes (policy_id, person_id, choice, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?)
-  ON CONFLICT(policy_id, person_id)
-  DO UPDATE SET choice = excluded.choice, updated_at = excluded.updated_at
-`;
+const loadRosterMemberByEmail = (db: Database, email: string) => {
+  const row = db
+    .prepare(
+      `
+        SELECT person_id, university_email, student_id, staff_id, role, status, created_at, updated_at
+        FROM roster_members
+        WHERE university_email = ?
+      `,
+    )
+    .get(normalizeEmail(email)) as RosterMemberRow | undefined;
 
-const identitySql = `
-  INSERT INTO identity_links (person_id, identity_type, identity_value, verified_at)
-  VALUES (?, ?, ?, ?)
-  ON CONFLICT(identity_type, identity_value)
-  DO UPDATE SET person_id = excluded.person_id, verified_at = excluded.verified_at
-`;
+  return row ?? null;
+};
 
-const policySql = `
-  INSERT INTO policies (
-    id,
-    slug,
-    jurisdiction_slug,
-    title,
-    status,
-    closes_at,
-    source_path,
-    created_at,
-    updated_at
-  )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT(id) DO UPDATE SET
-    slug = excluded.slug,
-    jurisdiction_slug = excluded.jurisdiction_slug,
-    title = excluded.title,
-    status = excluded.status,
-    closes_at = excluded.closes_at,
-    source_path = excluded.source_path,
-    updated_at = excluded.updated_at
-`;
+const loadLatestEmailCode = (db: Database, email: string) => {
+  const row = db
+    .prepare(
+      `
+        SELECT id, university_email, code_hash, expires_at, consumed_at, failed_attempts, created_at, updated_at
+        FROM email_verification_codes
+        WHERE university_email = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+    )
+    .get(normalizeEmail(email)) as EmailCodeRow | undefined;
 
-const personSql = `
-  INSERT INTO people (id, display_name, primary_role, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?)
-  ON CONFLICT(id) DO UPDATE SET
-    display_name = excluded.display_name,
-    primary_role = excluded.primary_role,
-    updated_at = excluded.updated_at
-`;
-
-const sessionSql = `
-  INSERT INTO sessions (id, person_id, created_at, updated_at)
-  VALUES (?, ?, ?, ?)
-  ON CONFLICT(id) DO UPDATE SET
-    person_id = excluded.person_id,
-    updated_at = excluded.updated_at
-`;
-
-const createDemoPerson = (db: Database) => {
-  const timestamp = "2026-04-03T09:00:00.000Z";
-  db.prepare(personSql).run(DEMO_PERSON_ID, "Verified campus member", "dual", timestamp, timestamp);
-  db.prepare(identitySql).run(DEMO_PERSON_ID, "student_id", "S-20481", timestamp);
-  db.prepare(identitySql).run(DEMO_PERSON_ID, "staff_id", "T-11804", timestamp);
-  db.prepare(identitySql).run(DEMO_PERSON_ID, "email_otp", "verified@university.edu", timestamp);
+  return row ?? null;
 };
 
 const seedPolicies = (db: Database) => {
@@ -315,44 +396,31 @@ const seedPolicies = (db: Database) => {
   }
 };
 
+const seedRoster = (db: Database) => {
+  const timestamp = "2026-04-04T08:00:00.000Z";
+
+  for (const member of ROSTER_MEMBERS) {
+    db.prepare(personSql).run(member.personId, member.displayName, member.role, timestamp, timestamp);
+    db.prepare(rosterMemberSql).run(
+      member.personId,
+      member.universityEmail,
+      member.studentId,
+      member.staffId,
+      member.role,
+      "active",
+      timestamp,
+      timestamp,
+    );
+  }
+};
+
 const initializeDatabase = (db: Database) => {
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA busy_timeout = 5000;");
   db.exec(MIGRATION_SQL);
-  createDemoPerson(db);
   seedPolicies(db);
-};
-
-export const openVotingDatabase = (dbPath: string = DEFAULT_DB_PATH) => {
-  mkdirSync(dirname(dbPath), { recursive: true });
-  const db = new Database(dbPath);
-  initializeDatabase(db);
-  return db;
-};
-
-export const closeVotingDatabase = (db: Database) => {
-  db.close();
-};
-
-export const getPolicyById = (db: Database, policyId: string) => loadPolicy(db, policyId);
-
-export const resolveSessionContext = (db: Database, sessionId: string | null): SessionContext => {
-  const requestedSession = sessionId ? loadSession(db, sessionId) : null;
-  const shouldBootstrap = !requestedSession;
-  const session = requestedSession ?? createDemoSession(db);
-  const person = loadPerson(db, session.personId);
-
-  if (!person) {
-    throw new VotingDatabaseError("invalid_session", "Session points at a missing person record.");
-  }
-
-  return {
-    session,
-    person,
-    identitySources: identitySourceRowsForPerson(db, person.id).map(toIdentitySource),
-    setCookie: shouldBootstrap ? buildSessionCookie(session.id) : undefined,
-  };
+  seedRoster(db);
 };
 
 const createSession = (db: Database, personId: string) => {
@@ -368,217 +436,199 @@ const createSession = (db: Database, personId: string) => {
   return session;
 };
 
-export const createDemoSession = (db: Database) => {
-  const session = db.prepare(`SELECT id, person_id, created_at, updated_at FROM sessions WHERE id = ?`).get(DEMO_SESSION_ID) as
-    | SessionRow
-    | undefined;
-
-  if (session) {
-    return toSession(session);
+const requireSessionContext = (db: Database, sessionId: string | null) => {
+  const context = getResolvedSession(db, sessionId);
+  if (!context) {
+    throw new VotingDatabaseError("authentication_required", "Sign in with a university account to continue.");
   }
 
-  const timestamp = now();
-  db.prepare(sessionSql).run(DEMO_SESSION_ID, DEMO_PERSON_ID, timestamp, timestamp);
-  return toSession({
-    id: DEMO_SESSION_ID,
-    person_id: DEMO_PERSON_ID,
-    created_at: timestamp,
-    updated_at: timestamp,
-  });
+  return context;
+};
+
+export const openVotingDatabase = (dbPath: string = DEFAULT_DB_PATH) => {
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const db = new Database(dbPath);
+  initializeDatabase(db);
+  return db;
+};
+
+export const closeVotingDatabase = (db: Database) => {
+  db.close();
 };
 
 export const buildSessionCookie = (sessionId: string) =>
-  `${SESSION_COOKIE_NAME}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`;
+  `${SESSION_COOKIE_NAME}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`;
 
-const personIdsForSources = (db: Database, sources: IdentitySource[]) =>
-  sources.flatMap((source) =>
-    db
-      .prepare(
-        `
-          SELECT DISTINCT person_id
-          FROM identity_links
-          WHERE identity_type = ? AND identity_value = ?
-        `,
-      )
-      .all(source.type, source.value) as Array<{ person_id: string }>,
-  );
+export const buildClearSessionCookie = () =>
+  `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
 
-const chooseCanonicalPersonId = (db: Database, personIds: string[]) => {
-  const uniquePersonIds = [...new Set(personIds)];
-  if (!uniquePersonIds.length) {
+export const getResolvedSession = (db: Database, sessionId: string | null): SessionContext | null => {
+  if (!sessionId) {
     return null;
   }
 
-  if (uniquePersonIds.length === 1) {
-    return uniquePersonIds[0];
+  const session = loadSession(db, sessionId);
+  if (!session) {
+    return null;
   }
 
-  const placeholders = uniquePersonIds.map(() => "?").join(", ");
-  const rows = db
-    .prepare(
-      `
-        SELECT id
-        FROM people
-        WHERE id IN (${placeholders})
-        ORDER BY created_at ASC, id ASC
-      `,
-    )
-    .all(...uniquePersonIds) as Array<{ id: string }>;
-
-  return rows[0]?.id ?? uniquePersonIds[0];
-};
-
-const compareVoteRows = (left: VoteRow, right: VoteRow, canonicalPersonId: string) => {
-  const updatedOrder = left.updated_at.localeCompare(right.updated_at);
-  if (updatedOrder !== 0) {
-    return updatedOrder;
+  const person = loadPerson(db, session.personId);
+  if (!person) {
+    db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+    return null;
   }
 
-  const createdOrder = left.created_at.localeCompare(right.created_at);
-  if (createdOrder !== 0) {
-    return createdOrder;
-  }
-
-  const leftCanonical = left.person_id === canonicalPersonId ? 1 : 0;
-  const rightCanonical = right.person_id === canonicalPersonId ? 1 : 0;
-  if (leftCanonical !== rightCanonical) {
-    return leftCanonical - rightCanonical;
-  }
-
-  return left.id - right.id;
-};
-
-const mergePeople = (db: Database, canonicalPersonId: string, sourcePersonIds: string[]) => {
-  const allPersonIds = [...new Set([canonicalPersonId, ...sourcePersonIds])];
-  const otherPersonIds = allPersonIds.filter((personId) => personId !== canonicalPersonId);
-  if (!otherPersonIds.length) {
-    return;
-  }
-
-  const placeholders = allPersonIds.map(() => "?").join(", ");
-  const voteRows = db
-    .prepare(
-      `
-        SELECT id, policy_id, person_id, choice, created_at, updated_at
-        FROM votes
-        WHERE person_id IN (${placeholders})
-      `,
-    )
-    .all(...allPersonIds) as VoteRow[];
-
-  const canonicalVotes = new Map<string, VoteRow>();
-  for (const row of voteRows) {
-    const existing = canonicalVotes.get(row.policy_id);
-    if (!existing || compareVoteRows(row, existing, canonicalPersonId) > 0) {
-      canonicalVotes.set(row.policy_id, row);
-    }
-  }
-
-  db.prepare(`UPDATE identity_links SET person_id = ? WHERE person_id IN (${placeholders})`).run(canonicalPersonId, ...allPersonIds);
-  db.prepare(`UPDATE sessions SET person_id = ? WHERE person_id IN (${placeholders})`).run(canonicalPersonId, ...allPersonIds);
-  db.prepare(`DELETE FROM votes WHERE person_id IN (${placeholders})`).run(...allPersonIds);
-  db.prepare(`DELETE FROM people WHERE id IN (${placeholders}) AND id <> ?`).run(...allPersonIds, canonicalPersonId);
-
-  for (const vote of canonicalVotes.values()) {
-    db.prepare(voteSql).run(vote.policy_id, canonicalPersonId, vote.choice, vote.created_at, vote.updated_at);
-  }
-};
-
-const upsertIdentityLinks = (db: Database, canonicalPersonId: string, sources: IdentitySource[]) => {
-  for (const source of sources) {
-    db.prepare(identitySql).run(canonicalPersonId, source.type, source.value, source.verifiedAt);
-  }
-};
-
-const createPersonFromSources = (db: Database, sources: IdentitySource[], displayName?: string) => {
-  const sourceTypes = new Set(sources.map((source) => source.type));
-  const primaryRole: Person["primaryRole"] =
-    sourceTypes.has("student_id") && sourceTypes.has("staff_id")
-      ? "dual"
-      : sourceTypes.has("staff_id")
-        ? "staff"
-        : "student";
-  const createdAt = now();
-  const personId = randomId("person");
-  const person = {
-    id: personId,
-    displayName: displayName?.trim() || "Verified campus member",
-    primaryRole,
-    createdAt,
-    updatedAt: createdAt,
+  return {
+    session,
+    person,
   };
-
-  db.prepare(personSql).run(person.id, person.displayName, person.primaryRole, person.createdAt, person.updatedAt);
-  upsertIdentityLinks(db, person.id, sources);
-  return person;
 };
 
-export const verifyIdentity = (db: Database, input: VerifyIdentityInput, sessionId: string | null): VerifyIdentityResponse => {
-  const sources = uniqueIdentitySources(input);
-  if (!sources.length) {
-    throw new VotingDatabaseError("invalid_identity", "At least one verification source is required.");
+export const getSession = (db: Database, sessionId: string | null): SessionResponse => {
+  const context = getResolvedSession(db, sessionId);
+  if (!context) {
+    return {
+      authenticated: false,
+      session: null,
+      person: null,
+    };
   }
 
-  return db.transaction(() => {
-    const session = sessionId ? loadSession(db, sessionId) : null;
-    const matchedPersonIds = [...new Set(personIdsForSources(db, sources).map((row) => row.person_id))];
-    const candidatePersonIds = [...new Set([session?.personId, ...matchedPersonIds].filter(Boolean) as string[])];
-    const canonicalPersonId = chooseCanonicalPersonId(db, candidatePersonIds);
-    let person: Person;
+  return {
+    authenticated: true,
+    session: context.session,
+    person: context.person,
+  };
+};
 
-    if (!canonicalPersonId) {
-      person = createPersonFromSources(db, sources, input.displayName);
-    } else {
-      if (candidatePersonIds.length > 1) {
-        mergePeople(db, canonicalPersonId, candidatePersonIds);
-      }
+export const requestSignInCode = (db: Database, email: string): RequestSignInCodeResponse => {
+  const normalizedEmail = normalizeEmail(email);
+  if (!isUniversityEmail(normalizedEmail)) {
+    throw new VotingDatabaseError("invalid_email", `Use your @${ALLOWED_EMAIL_DOMAIN} account.`);
+  }
 
-      const currentPerson = loadPerson(db, canonicalPersonId);
-      if (!currentPerson) {
-        throw new VotingDatabaseError("invalid_state", "Canonical person record is missing.");
-      }
+  const resendAvailableAt = toFutureIso(OTP_RESEND_COOLDOWN_MS);
+  const expiresAt = toFutureIso(OTP_TTL_MS);
+  const rosterMember = loadRosterMemberByEmail(db, normalizedEmail);
 
-      person = currentPerson;
-      upsertIdentityLinks(db, canonicalPersonId, sources);
+  if (!rosterMember || rosterMember.status !== "active") {
+    return {
+      status: "sent",
+      destination: maskEmail(normalizedEmail),
+      expiresAt,
+      resendAvailableAt,
+    };
+  }
+
+  const latestCode = loadLatestEmailCode(db, normalizedEmail);
+  if (latestCode && Date.parse(latestCode.created_at) + OTP_RESEND_COOLDOWN_MS > Date.now()) {
+    throw new VotingDatabaseError("rate_limited", "Wait a minute before requesting another code.");
+  }
+
+  const code = createOtpCode();
+  const timestamp = now();
+
+  db.prepare(
+    `
+      INSERT INTO email_verification_codes (
+        id,
+        university_email,
+        code_hash,
+        expires_at,
+        consumed_at,
+        failed_attempts,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, NULL, 0, ?, ?)
+    `,
+  ).run(randomId("otp"), normalizedEmail, hashOtpCode(normalizedEmail, code), toFutureIso(OTP_TTL_MS), timestamp, timestamp);
+
+  return {
+    status: "sent",
+    destination: maskEmail(normalizedEmail),
+    expiresAt,
+    resendAvailableAt,
+    ...(ENABLE_DEV_CODE_ECHO ? { devCode: code } : {}),
+  };
+};
+
+export const verifySignInCode = (db: Database, email: string, code: string): VerifySignInCodeResponse =>
+  db.transaction(() => {
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedCode = code.trim();
+    if (!isUniversityEmail(normalizedEmail)) {
+      throw new VotingDatabaseError("invalid_email", `Use your @${ALLOWED_EMAIL_DOMAIN} account.`);
     }
 
-    const activePerson = person.id === canonicalPersonId || !canonicalPersonId ? person : loadPerson(db, canonicalPersonId);
-    if (!activePerson) {
-      throw new VotingDatabaseError("invalid_state", "Unable to resolve a canonical person.");
+    if (!/^\d{6}$/.test(normalizedCode)) {
+      throw new VotingDatabaseError("invalid_code", "Enter the 6-digit code.");
     }
 
-    const nextSession = session ? createOrUpdateSession(db, session.id, activePerson.id) : createSession(db, activePerson.id);
+    const rosterMember = loadRosterMemberByEmail(db, normalizedEmail);
+    const latestCode = loadLatestEmailCode(db, normalizedEmail);
+
+    if (!rosterMember || rosterMember.status !== "active" || !latestCode || latestCode.consumed_at) {
+      throw new VotingDatabaseError("invalid_code", "That code could not be verified.");
+    }
+
+    if (Date.parse(latestCode.expires_at) <= Date.now()) {
+      throw new VotingDatabaseError("code_expired", "That code expired. Request a new one.");
+    }
+
+    if (latestCode.failed_attempts >= OTP_MAX_FAILED_ATTEMPTS) {
+      throw new VotingDatabaseError("rate_limited", "Too many attempts. Request a new code.");
+    }
+
+    const candidateHash = hashOtpCode(normalizedEmail, normalizedCode);
+    if (!secureHashMatch(latestCode.code_hash, candidateHash)) {
+      db.prepare(
+        `
+          UPDATE email_verification_codes
+          SET failed_attempts = failed_attempts + 1, updated_at = ?
+          WHERE id = ?
+        `,
+      ).run(now(), latestCode.id);
+
+      throw new VotingDatabaseError("invalid_code", "That code could not be verified.");
+    }
+
+    const person = loadPerson(db, rosterMember.person_id);
+    if (!person) {
+      throw new VotingDatabaseError("invalid_state", "Roster member points at a missing person.");
+    }
+
+    const session = createSession(db, person.id);
+    const timestamp = now();
+    db.prepare(`UPDATE email_verification_codes SET consumed_at = ?, updated_at = ? WHERE id = ?`).run(
+      timestamp,
+      timestamp,
+      latestCode.id,
+    );
 
     return {
-      session: nextSession,
-      person: activePerson,
-      identitySources: identitySourceRowsForPerson(db, activePerson.id).map(toIdentitySource),
+      authenticated: true,
+      session,
+      person,
     };
   })();
-};
 
-const createOrUpdateSession = (db: Database, sessionId: string, personId: string) => {
-  const timestamp = now();
-  const session = {
-    id: sessionId,
-    personId,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-  db.prepare(sessionSql).run(session.id, session.personId, session.createdAt, session.updatedAt);
-  return session;
+export const signOut = (db: Database, sessionId: string | null): SignOutResponse => {
+  if (sessionId) {
+    db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+  }
+
+  return { success: true };
 };
 
 export const getVoteStatus = (db: Database, sessionId: string | null, policyId: string): VoteStatusResponse => {
-  const session = resolveSessionContext(db, sessionId);
+  const session = requireSessionContext(db, sessionId);
   const policy = loadPolicy(db, policyId);
   if (!policy) {
     throw new VotingDatabaseError("policy_not_found", "Policy not found.");
   }
 
   return {
-    person: session.person,
-    identitySources: session.identitySources,
     policy,
     vote: loadVote(db, policyId, session.person.id),
   };
@@ -590,7 +640,7 @@ export const submitVote = (
   policyId: string,
   choice: VoteChoice,
 ): SubmitVoteResponse => {
-  const session = resolveSessionContext(db, sessionId);
+  const session = requireSessionContext(db, sessionId);
   const policy = loadPolicy(db, policyId);
 
   if (!policy) {
@@ -613,7 +663,3 @@ export const submitVote = (
     };
   })();
 };
-
-export const getResolvedSession = (db: Database, sessionId: string | null) => resolveSessionContext(db, sessionId);
-
-export const normalizeInputSources = uniqueIdentitySources;

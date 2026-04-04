@@ -1,14 +1,18 @@
 import type {
+  RequestSignInCodeInput,
+  RequestSignInCodeResponse,
   SessionResponse,
+  SignOutResponse,
   SubmitVoteResponse,
-  VerifyIdentityInput,
-  VerifyIdentityResponse,
+  VerifySignInCodeInput,
+  VerifySignInCodeResponse,
   VoteStatusResponse,
 } from "@/lib/voting";
 import { VotingApiError } from "@/lib/voting";
 import type { VoteChoice } from "@/lib/ballotItems";
 
 const API_BASE = "/api";
+export const sessionQueryKey = ["session"] as const;
 
 const parseError = async (response: Response) => {
   try {
@@ -51,8 +55,19 @@ export const submitVote = (policyId: string, choice: VoteChoice) =>
     body: JSON.stringify({ choice }),
   });
 
-export const verifyIdentity = (input: VerifyIdentityInput) =>
-  request<VerifyIdentityResponse>("/auth/verify", {
+export const requestSignInCode = (input: RequestSignInCodeInput) =>
+  request<RequestSignInCodeResponse>("/auth/request-code", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+
+export const verifySignInCode = (input: VerifySignInCodeInput) =>
+  request<VerifySignInCodeResponse>("/auth/verify-code", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const signOut = () =>
+  request<SignOutResponse>("/auth/sign-out", {
+    method: "POST",
   });

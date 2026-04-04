@@ -1,5 +1,17 @@
-import { openVotingDatabase, getResolvedSession, getVoteStatus, submitVote, verifyIdentity, buildSessionCookie, VotingDatabaseError, SESSION_COOKIE_NAME } from "./db.ts";
-import type { VerifyIdentityInput } from "../src/lib/voting.ts";
+import {
+  buildClearSessionCookie,
+  buildSessionCookie,
+  getSession,
+  getVoteStatus,
+  openVotingDatabase,
+  requestSignInCode,
+  SESSION_COOKIE_NAME,
+  signOut,
+  submitVote,
+  verifySignInCode,
+  VotingDatabaseError,
+} from "./db.ts";
+import type { RequestSignInCodeInput, VerifySignInCodeInput } from "../src/lib/voting.ts";
 import type { VoteChoice } from "../src/lib/ballotItems.ts";
 
 const port = Number(process.env.BETTER_GOV_API_PORT ?? "8787");
@@ -35,9 +47,13 @@ const parseJson = async <T>(request: Request): Promise<T> => {
 const errorResponse = (error: unknown, headers: HeadersInit = {}) => {
   if (error instanceof VotingDatabaseError) {
     const statusByCode: Record<VotingDatabaseError["code"], number> = {
+      authentication_required: 401,
+      invalid_email: 400,
+      invalid_code: 400,
+      code_expired: 410,
+      rate_limited: 429,
       policy_not_found: 404,
       policy_closed: 409,
-      invalid_identity: 400,
       invalid_vote_choice: 400,
       invalid_request: 400,
       invalid_session: 401,
@@ -69,21 +85,16 @@ const errorResponse = (error: unknown, headers: HeadersInit = {}) => {
   );
 };
 
-const withSessionHeaders = (headers: HeadersInit, setCookie?: string) =>
-  setCookie ? { ...headers, "Set-Cookie": setCookie } : headers;
-
 const handleVoteStatus = (request: Request, policyId: string) => {
-  const resolvedSession = getResolvedSession(db, readSessionCookie(request));
   try {
-    const payload = getVoteStatus(db, resolvedSession.session.id, policyId);
-    return json(payload, 200, withSessionHeaders({}, resolvedSession.setCookie));
+    const payload = getVoteStatus(db, readSessionCookie(request), policyId);
+    return json(payload);
   } catch (error) {
-    return errorResponse(error, withSessionHeaders({}, resolvedSession.setCookie));
+    return errorResponse(error);
   }
 };
 
 const handleSubmitVote = async (request: Request, policyId: string) => {
-  const resolvedSession = getResolvedSession(db, readSessionCookie(request));
   try {
     const body = await parseJson<{ choice?: VoteChoice }>(request);
 
@@ -91,20 +102,44 @@ const handleSubmitVote = async (request: Request, policyId: string) => {
       throw new VotingDatabaseError("invalid_vote_choice", "A valid vote choice is required.");
     }
 
-    const payload = submitVote(db, resolvedSession.session.id, policyId, body.choice);
-    return json(payload, 200, withSessionHeaders({}, resolvedSession.setCookie));
+    const payload = submitVote(db, readSessionCookie(request), policyId, body.choice);
+    return json(payload);
   } catch (error) {
-    return errorResponse(error, withSessionHeaders({}, resolvedSession.setCookie));
+    return errorResponse(error);
   }
 };
 
-const handleVerifyIdentity = async (request: Request) => {
-  const sessionId = readSessionCookie(request);
-  const body = await parseJson<VerifyIdentityInput>(request);
-  const payload = verifyIdentity(db, body, sessionId);
-  return json(payload, 200, {
-    "Set-Cookie": buildSessionCookie(payload.session.id),
-  });
+const handleRequestCode = async (request: Request) => {
+  try {
+    const body = await parseJson<RequestSignInCodeInput>(request);
+    const payload = requestSignInCode(db, body.email);
+    return json(payload, 200);
+  } catch (error) {
+    return errorResponse(error);
+  }
+};
+
+const handleVerifyCode = async (request: Request) => {
+  try {
+    const body = await parseJson<VerifySignInCodeInput>(request);
+    const payload = verifySignInCode(db, body.email, body.code);
+    return json(payload, 200, {
+      "Set-Cookie": buildSessionCookie(payload.session.id),
+    });
+  } catch (error) {
+    return errorResponse(error);
+  }
+};
+
+const handleSignOut = (request: Request) => {
+  try {
+    const payload = signOut(db, readSessionCookie(request));
+    return json(payload, 200, {
+      "Set-Cookie": buildClearSessionCookie(),
+    });
+  } catch (error) {
+    return errorResponse(error);
+  }
 };
 
 const server = Bun.serve({
@@ -118,8 +153,13 @@ const server = Bun.serve({
       }
 
       if (request.method === "GET" && url.pathname === "/api/me") {
-        const resolvedSession = getResolvedSession(db, readSessionCookie(request));
-        return json(resolvedSession, 200, withSessionHeaders({}, resolvedSession.setCookie));
+        const sessionId = readSessionCookie(request);
+        const payload = getSession(db, sessionId);
+        return json(
+          payload,
+          200,
+          !payload.authenticated && sessionId ? { "Set-Cookie": buildClearSessionCookie() } : {},
+        );
       }
 
       const voteMatch = url.pathname.match(/^\/api\/policies\/([^/]+)\/vote$/);
@@ -131,8 +171,16 @@ const server = Bun.serve({
         return await handleSubmitVote(request, decodeURIComponent(voteMatch[1]));
       }
 
-      if (request.method === "POST" && url.pathname === "/api/auth/verify") {
-        return await handleVerifyIdentity(request);
+      if (request.method === "POST" && url.pathname === "/api/auth/request-code") {
+        return await handleRequestCode(request);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/auth/verify-code") {
+        return await handleVerifyCode(request);
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/auth/sign-out") {
+        return handleSignOut(request);
       }
 
       return json({ error: { code: "not_found", message: "Route not found." } }, 404);

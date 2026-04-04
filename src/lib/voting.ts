@@ -2,14 +2,6 @@ import type { BallotItem, VoteChoice } from "@/lib/ballotItems";
 
 export type { VoteChoice } from "@/lib/ballotItems";
 
-export type IdentitySourceType = "student_id" | "staff_id" | "email_otp";
-
-export type IdentitySource = {
-  type: IdentitySourceType;
-  value: string;
-  verifiedAt: string;
-};
-
 export type Person = {
   id: string;
   displayName: string;
@@ -48,31 +40,51 @@ export type SessionRecord = {
 };
 
 export type VoteStatusResponse = {
-  person: Person;
-  identitySources: IdentitySource[];
   policy: PolicyRecord;
   vote: VoteRecord | null;
 };
 
-export type SessionResponse = {
+export type AuthenticatedSessionResponse = {
+  authenticated: true;
   session: SessionRecord;
   person: Person;
-  identitySources: IdentitySource[];
 };
+
+export type AnonymousSessionResponse = {
+  authenticated: false;
+  session: null;
+  person: null;
+};
+
+export type SessionResponse = AuthenticatedSessionResponse | AnonymousSessionResponse;
 
 export type SubmitVoteResponse = {
   action: "created" | "updated";
   vote: VoteRecord;
 };
 
-export type VerifyIdentityInput = {
-  studentId?: string;
-  staffId?: string;
-  emailOtp?: string;
-  displayName?: string;
+export type RequestSignInCodeInput = {
+  email: string;
 };
 
-export type VerifyIdentityResponse = SessionResponse;
+export type RequestSignInCodeResponse = {
+  status: "sent";
+  destination: string;
+  expiresAt: string;
+  resendAvailableAt: string;
+  devCode?: string;
+};
+
+export type VerifySignInCodeInput = {
+  email: string;
+  code: string;
+};
+
+export type VerifySignInCodeResponse = AuthenticatedSessionResponse;
+
+export type SignOutResponse = {
+  success: true;
+};
 
 export type ApiErrorBody = {
   error: {

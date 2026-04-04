@@ -5,11 +5,12 @@ import { tmpdir } from "node:os";
 import { ballotItems } from "../src/lib/ballotItems.ts";
 import { policyIdForItem } from "../src/lib/voting.ts";
 import {
-  getResolvedSession,
+  getSession,
   getVoteStatus,
   openVotingDatabase,
+  requestSignInCode,
   submitVote,
-  verifyIdentity,
+  verifySignInCode,
   VotingDatabaseError,
 } from "./db.ts";
 
@@ -30,25 +31,21 @@ afterEach(() => {
 });
 
 describe("voting database", () => {
-  it("bootstraps a demo session when no session cookie is present", () => {
-    const resolved = getResolvedSession(db, null);
+  it("keeps anonymous visitors unauthenticated until they verify a university email code", () => {
+    const anonymous = getSession(db, null);
+    const codeDelivery = requestSignInCode(db, "rahel.bekele@university.edu");
+    const verified = verifySignInCode(db, "rahel.bekele@university.edu", codeDelivery.devCode ?? "");
+    const authenticated = getSession(db, verified.session.id);
 
-    expect(resolved.person.id).toBe("person_demo");
-    expect(resolved.identitySources).toHaveLength(3);
-    expect(resolved.setCookie).toContain("better-gov.session=session_demo");
+    expect(anonymous.authenticated).toBe(false);
+    expect(codeDelivery.devCode).toHaveLength(6);
+    expect(verified.person.displayName).toBe("Rahel Bekele");
+    expect(authenticated.authenticated).toBe(true);
   });
 
-  it("links verification sources to one person and keeps one vote row per policy", () => {
-    const verified = verifyIdentity(
-      db,
-      {
-        studentId: "S-1001",
-        staffId: "T-2002",
-        emailOtp: "member@university.edu",
-      },
-      null,
-    );
-
+  it("keeps one vote row per policy for each authenticated account", () => {
+    const codeDelivery = requestSignInCode(db, "leila.mekonnen@university.edu");
+    const verified = verifySignInCode(db, "leila.mekonnen@university.edu", codeDelivery.devCode ?? "");
     const policyId = policyIdForItem(ballotItems[0]);
     const created = submitVote(db, verified.session.id, policyId, "approve");
     const updated = submitVote(db, verified.session.id, policyId, "reject");
@@ -63,18 +60,21 @@ describe("voting database", () => {
       )
       .get(policyId, verified.person.id) as { count: number };
 
-    expect(verified.person.primaryRole).toBe("dual");
-    expect(verified.identitySources).toHaveLength(3);
     expect(created.action).toBe("created");
     expect(updated.action).toBe("updated");
     expect(voteStatus.vote?.choice).toBe("reject");
     expect(voteCount.count).toBe(1);
   });
 
-  it("rejects votes for closed policies", () => {
-    const policyId = policyIdForItem(ballotItems[1]);
-    db.prepare(`UPDATE policies SET status = 'closed' WHERE id = ?`).run(policyId);
+  it("rejects anonymous voting attempts", () => {
+    const policyId = policyIdForItem(ballotItems[0]);
 
     expect(() => submitVote(db, null, policyId, "approve")).toThrow(VotingDatabaseError);
+  });
+
+  it("rejects expired or invalid verification codes", () => {
+    requestSignInCode(db, "hana.tadesse@university.edu");
+
+    expect(() => verifySignInCode(db, "hana.tadesse@university.edu", "000000")).toThrow(VotingDatabaseError);
   });
 });
