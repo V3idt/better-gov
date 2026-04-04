@@ -54,6 +54,16 @@ const draftSchema = z.object({
 });
 
 type DraftPayload = z.infer<typeof draftSchema>;
+const draftModelSchema = z.object({
+  title: z.string().optional(),
+  category: z.string().optional(),
+  scope: z.string().optional(),
+  tldr: z.string().optional(),
+  bullets: z.array(z.string()).optional(),
+  rationale: z.string().optional(),
+});
+
+type DraftModelPayload = z.infer<typeof draftModelSchema>;
 let automaticAiPublishInFlight: Promise<ReturnType<typeof getAutomaticAiPolicyBuilderStatus>> | null = null;
 
 const explanationJsonSchema = {
@@ -382,6 +392,39 @@ const normalizeDraftField = (value: string, fallback: string, maxLength: number)
   return trimmed;
 };
 
+const normalizeDraftPayload = (parsed: DraftModelPayload, sourceDetails: PropositionDetail[], primarySource: PropositionDetail): DraftPayload => {
+  const sourceBullets = Array.from(
+    new Set(sourceDetails.flatMap((detail) => detail.bullets).map((bullet) => bullet.trim()).filter(Boolean)),
+  );
+  const fallbackBullets =
+    sourceBullets.length >= 2
+      ? sourceBullets.slice(0, 6)
+      : ["Build on the selected closed policies.", "Keep the benefits focused on the people who backed them."];
+
+  const bullets = Array.from(
+    new Set(
+      (parsed.bullets?.length ? parsed.bullets : fallbackBullets)
+        .map((bullet) => bullet.trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 6);
+
+  const normalizedBullets = bullets.length >= 2 ? bullets : fallbackBullets;
+
+  return {
+    title: normalizeDraftField(parsed.title ?? "", primarySource.title, 120),
+    category: normalizeDraftField(parsed.category ?? "", primarySource.category, 48),
+    scope: normalizeDraftField(parsed.scope ?? "", primarySource.scope, 80),
+    tldr: normalizeDraftField(parsed.tldr ?? "", primarySource.tldr, 280),
+    bullets: normalizedBullets,
+    rationale: normalizeDraftField(
+      parsed.rationale ?? "",
+      `It extends the shared direction of the selected policies and keeps the benefits focused on the people who backed them.`,
+      800,
+    ),
+  };
+};
+
 const extractJsonText = (raw: string) => {
   const trimmed = raw.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
@@ -556,7 +599,7 @@ const parseExplanationPayload = (raw: string) => parseJsonPayload(raw, explanati
 
 const parseChatPayload = (raw: string) => parseJsonPayload(raw, chatAnswerSchema);
 
-const parseDraftPayload = (raw: string) => parseJsonPayload(raw, draftSchema);
+const parseDraftPayload = (raw: string) => parseJsonPayload(raw, draftModelSchema);
 
 const openAiExplanation = async (
   config: ProviderConfig,
@@ -1282,7 +1325,7 @@ export const getPolicyDraft = async ({
   let rateLimitedError: VotingDatabaseError | null = null;
 
   for (const provider of providers) {
-    let parsed: DraftPayload;
+    let parsed: DraftModelPayload;
     try {
       parsed = await providerDraft(provider, prompt, fetchImpl);
     } catch (error) {
@@ -1300,14 +1343,7 @@ export const getPolicyDraft = async ({
     }
 
     try {
-      const draft = {
-        title: normalizeDraftField(parsed.title, primarySource.title, 120),
-        category: normalizeDraftField(parsed.category, primarySource.category, 48),
-        scope: normalizeDraftField(parsed.scope, primarySource.scope, 80),
-        tldr: normalizeDraftField(parsed.tldr, primarySource.tldr, 280),
-        bullets: parsed.bullets.map((bullet) => bullet.trim()).filter(Boolean),
-        rationale: parsed.rationale.trim(),
-      };
+      const draft = normalizeDraftPayload(parsed, sourceDetails, primarySource);
 
       const created = createProposition(
         db,
