@@ -8,7 +8,7 @@ import {
   verifySignInCode,
   VotingDatabaseError,
 } from "./db.ts";
-import { getPolicyChatAnswer, getPolicyExplanation } from "./ai.ts";
+import { getPolicyChatAnswer, getPolicyDraft, getPolicyExplanation } from "./ai.ts";
 
 let dbPath = "";
 let db: ReturnType<typeof openVotingDatabase>;
@@ -274,6 +274,70 @@ describe("policy AI explainer", () => {
           }),
       }),
     ).rejects.toThrow("Gemini quota or rate limit reached");
+  });
+
+  it("auto-creates a draft proposition from a supported policy and caches the result", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("rahel.bekele"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("rahel.bekele"), codeDelivery.devCode ?? "");
+
+    process.env.BETTER_GOV_GEMINI_API_KEY = "gemini-test-key";
+
+    let fetchCount = 0;
+    const fetchImpl = async () => {
+      fetchCount += 1;
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      title: "Residence Hall Quiet Hours Upgrade",
+                      category: "Campus housing",
+                      scope: "Residence halls and shared study spaces",
+                      tldr: "Create quieter evening study hours and clearer guest expectations in residence halls.",
+                      bullets: [
+                        "Sets a consistent quiet-hours window for all residence halls.",
+                        "Adds a simple guest guidance rule for evenings.",
+                        "Creates an appeal path for exceptional circumstances.",
+                      ],
+                      brief: "# Residence Hall Quiet Hours Upgrade\n\n## Purpose\n\nStrengthen the living and studying environment for residents who backed the original housing policy.\n\n## Changes\n\n- Standardize quiet hours.\n- Publish guest expectations.\n- Add a light appeal process.\n\n## Tradeoff\n\nResidents get more predictability, while housing staff need a clear enforcement workflow.",
+                      rationale: "It extends the housing policy in a way that improves everyday life for the same people who supported stronger housing standards.",
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+
+    const first = await getPolicyDraft({
+      db,
+      sessionId: verified.session.id,
+      propositionId: "academic-senate:mandatory-attendance-policy",
+      providerPreference: "gemini",
+      fetchImpl,
+    });
+
+    const second = await getPolicyDraft({
+      db,
+      sessionId: verified.session.id,
+      propositionId: "academic-senate:mandatory-attendance-policy",
+      providerPreference: "gemini",
+      fetchImpl,
+    });
+
+    expect(first.cached).toBe(false);
+    expect(second.cached).toBe(true);
+    expect(first.providerUsed).toBe("gemini");
+    expect(first.proposition.status).toBe("draft");
+    expect(first.proposition.title).toBe("Residence Hall Quiet Hours Upgrade");
+    expect(second.proposition.id).toBe(first.proposition.id);
+    expect(fetchCount).toBe(1);
   });
 
   it("sends the Gemini API key in the request and defaults to gemini-2.5-flash", async () => {

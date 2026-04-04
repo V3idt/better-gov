@@ -14,9 +14,10 @@ import {
   verifySignInCode,
   VotingDatabaseError,
 } from "./db.ts";
-import { getPolicyChatAnswer, getPolicyExplanation } from "./ai.ts";
+import { getPolicyChatAnswer, getPolicyDraft, getPolicyExplanation } from "./ai.ts";
 import type {
   PropositionAiChatRequest,
+  PropositionAiDraftRequest,
   PropositionAiExplanationRequest,
   CreatePropositionInput,
   RequestSignInCodeInput,
@@ -225,6 +226,30 @@ const server = Bun.serve({
             role: body.role,
             providerPreference: body.provider,
             question: body.question,
+          }),
+        );
+      }
+
+      const propositionDraftMatch = url.pathname.match(/^\/api\/propositions\/([^/]+)\/ai-draft$/);
+      if (propositionDraftMatch && request.method === "POST") {
+        const body = await parseJson<PropositionAiDraftRequest>(request);
+        if (
+          body.provider !== undefined &&
+          body.provider !== "auto" &&
+          body.provider !== "openai" &&
+          body.provider !== "gemini" &&
+          body.provider !== "grok"
+        ) {
+          throw new VotingDatabaseError("invalid_request", "Choose a valid AI provider.");
+        }
+
+        return json(
+          await getPolicyDraft({
+            db,
+            sessionId: readSessionCookie(request),
+            propositionId: decodeURIComponent(propositionDraftMatch[1]),
+            providerPreference: body.provider,
+            clientIpAddress: readClientAddress(request),
           }),
         );
       }

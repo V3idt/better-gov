@@ -2,10 +2,13 @@ import { createHash } from "node:crypto";
 import {
   getCachedAiExplanation,
   getCachedAiChatAnswer,
+  getCachedAiPolicyDraft,
   getPropositionDetailById,
   getResolvedSession,
+  storeAiPolicyDraft,
   storeAiExplanation,
   storeAiChatAnswer,
+  createProposition,
   type VotingDatabase,
   VotingDatabaseError,
 } from "./db.ts";
@@ -14,13 +17,16 @@ import type {
   AiProviderPreference,
   AiProviderUsed,
   PropositionAiChatResponse,
+  PropositionAiDraftResponse,
   PropositionAiExplanation,
   PropositionDetail,
 } from "../src/lib/voting.ts";
 import { z } from "zod";
 
 const PROMPT_VERSION = "2026-04-04-v1";
+const DRAFT_PROMPT_VERSION = "2026-04-04-draft-v1";
 const DEFAULT_PROVIDER_ORDER: Exclude<AiProviderPreference, "auto">[] = ["gemini", "openai", "grok"];
+const DRAFT_CLOSE_OFFSET_MS = 60 * 24 * 60 * 60 * 1000;
 
 const explanationSchema = z.object({
   explanation: z.string().min(1),
@@ -31,6 +37,16 @@ const explanationSchema = z.object({
 
 const chatAnswerSchema = z.object({
   answer: z.string().min(1),
+});
+
+const draftSchema = z.object({
+  title: z.string().min(1),
+  category: z.string().min(1),
+  scope: z.string().min(1),
+  tldr: z.string().min(1),
+  bullets: z.array(z.string().min(1)).min(2).max(6),
+  brief: z.string().min(1),
+  rationale: z.string().min(1),
 });
 
 const explanationJsonSchema = {
@@ -68,6 +84,23 @@ const chatAnswerJsonSchema = {
   required: ["answer"],
 } as const;
 
+const draftJsonSchema = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    category: { type: "string" },
+    scope: { type: "string" },
+    tldr: { type: "string" },
+    bullets: {
+      type: "array",
+      items: { type: "string" },
+    },
+    brief: { type: "string" },
+    rationale: { type: "string" },
+  },
+  required: ["title", "category", "scope", "tldr", "bullets", "brief", "rationale"],
+} as const;
+
 type ProviderConfig = {
   provider: Exclude<AiProviderPreference, "auto">;
   model: string;
@@ -96,7 +129,7 @@ const providerLabel = (provider: Exclude<AiProviderPreference, "auto">) => {
 const providerRequestError = (
   provider: Exclude<AiProviderPreference, "auto">,
   status: number,
-  kind: "explanation" | "chat",
+  kind: "explanation" | "chat" | "draft",
   message?: string,
 ) => {
   const label = providerLabel(provider);
@@ -257,6 +290,34 @@ const buildChatPrompt = (detail: PropositionDetail, role: AiAudienceRole, questi
   ].join("\n");
 };
 
+const buildDraftPrompt = (detail: PropositionDetail) =>
+  [
+    "You are helping a university governance team design a follow-up policy.",
+    "Create a new draft that strengthens, extends, or complements the source policy.",
+    "Assume the draft should appeal to the people who supported the source policy and benefit them directly.",
+    "Use only the policy information provided below.",
+    "Stay balanced and factual.",
+    "Do not copy the source policy wording.",
+    "Write in plain language for a university audience.",
+    "Return valid JSON only with keys title, category, scope, tldr, bullets, brief, rationale.",
+    "bullets must be short practical points.",
+    "brief should be a concise markdown policy brief with headings and tradeoffs.",
+    "Keep the draft specific enough that it could be posted immediately.",
+    "",
+    `Source policy title: ${detail.title}`,
+    `Source policy path: ${detail.path}`,
+    `Support: ${detail.supportPercent === null ? "unknown" : `${detail.supportPercent.toFixed(1)}%`} from ${detail.turnoutCount.toLocaleString()} votes`,
+    `Jurisdiction: ${detail.jurisdiction}`,
+    `Category: ${detail.category}`,
+    `Scope: ${detail.scope}`,
+    `TL;DR: ${detail.tldr}`,
+    `Quick read: ${detail.reviewChecks.map((check) => `${check.name}=${check.status}`).join(", ")}`,
+    `Bullet points: ${detail.bullets.map((bullet) => `- ${bullet}`).join("\n")}`,
+    "",
+    "Full brief:",
+    detail.brief,
+  ].join("\n");
+
 const extractJsonText = (raw: string) => {
   const trimmed = raw.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
@@ -340,6 +401,16 @@ const parseChatPayload = (raw: string) => {
   } catch {
     const repaired = escapeControlCharsInJsonStrings(jsonText);
     return chatAnswerSchema.parse(JSON.parse(repaired) as unknown);
+  }
+};
+
+const parseDraftPayload = (raw: string) => {
+  const jsonText = extractJsonText(raw);
+  try {
+    return draftSchema.parse(JSON.parse(jsonText) as unknown);
+  } catch {
+    const repaired = escapeControlCharsInJsonStrings(jsonText);
+    return draftSchema.parse(JSON.parse(repaired) as unknown);
   }
 };
 
@@ -623,6 +694,146 @@ const grokChat = async (
   return parseChatPayload(content);
 };
 
+const openAiDraft = async (
+  config: ProviderConfig,
+  prompt: string,
+  fetchImpl: typeof fetch,
+) => {
+  const response = await fetchImpl("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.model,
+      temperature: 0.25,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Return only valid JSON with keys title, category, scope, tldr, bullets, brief, rationale. Do not include markdown fences.",
+        },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw providerRequestError("openai", response.status, "draft");
+  }
+
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>;
+  };
+  const content = payload.choices?.[0]?.message?.content ?? "";
+  if (!content.trim()) {
+    throw new Error("OpenAI returned an empty draft.");
+  }
+
+  return parseDraftPayload(content);
+};
+
+const geminiDraft = async (
+  config: ProviderConfig,
+  prompt: string,
+  fetchImpl: typeof fetch,
+) => {
+  const url = new URL(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`,
+  );
+  url.searchParams.set("key", config.apiKey);
+
+  const response = await fetchImpl(
+    url.toString(),
+    {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": config.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: `Return only valid JSON with keys title, category, scope, tldr, bullets, brief, rationale.\n\n${prompt}` }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.25,
+          maxOutputTokens: 1536,
+          responseMimeType: "application/json",
+          responseJsonSchema: draftJsonSchema,
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw providerRequestError("gemini", response.status, "draft", message);
+  }
+
+  const payload = (await response.json()) as {
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{ text?: string | null }>;
+      };
+    }>;
+  };
+  const content =
+    payload.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text ?? "")
+      .join("")
+      .trim() ?? "";
+
+  if (!content) {
+    throw new Error("Gemini returned an empty draft.");
+  }
+
+  return parseDraftPayload(content);
+};
+
+const grokDraft = async (
+  config: ProviderConfig,
+  prompt: string,
+  fetchImpl: typeof fetch,
+) => {
+  const response = await fetchImpl("https://api.x.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.model,
+      temperature: 0.25,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Return only valid JSON with keys title, category, scope, tldr, bullets, brief, rationale. Do not include markdown fences.",
+        },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw providerRequestError("grok", response.status, "draft");
+  }
+
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>;
+  };
+  const content = payload.choices?.[0]?.message?.content ?? "";
+  if (!content.trim()) {
+    throw new Error("Grok returned an empty draft.");
+  }
+
+  return parseDraftPayload(content);
+};
+
 const providerExplanation = async (
   provider: Exclude<AiProviderPreference, "auto">,
   prompt: string,
@@ -665,6 +876,27 @@ const providerChat = async (
   return grokChat(config, prompt, fetchImpl);
 };
 
+const providerDraft = async (
+  provider: Exclude<AiProviderPreference, "auto">,
+  prompt: string,
+  fetchImpl: typeof fetch,
+) => {
+  const config = getProviderConfig(provider);
+  if (!config) {
+    throw new Error(`${provider} is not configured.`);
+  }
+
+  if (provider === "openai") {
+    return openAiDraft(config, prompt, fetchImpl);
+  }
+
+  if (provider === "gemini") {
+    return geminiDraft(config, prompt, fetchImpl);
+  }
+
+  return grokDraft(config, prompt, fetchImpl);
+};
+
 const buildResponse = (
   explanation: Omit<PropositionAiExplanation, "cached" | "generatedAt">,
   providerUsed: AiProviderUsed,
@@ -682,6 +914,17 @@ const buildChatResponse = (
   cached: boolean,
 ): PropositionAiChatResponse => ({
   ...answer,
+  providerUsed,
+  cached,
+  generatedAt: new Date().toISOString(),
+});
+
+const buildDraftResponse = (
+  draft: Omit<PropositionAiDraftResponse, "cached" | "generatedAt">,
+  providerUsed: AiProviderUsed,
+  cached: boolean,
+): PropositionAiDraftResponse => ({
+  ...draft,
   providerUsed,
   cached,
   generatedAt: new Date().toISOString(),
@@ -808,6 +1051,117 @@ export const getPolicyChatAnswer = async ({
         rateLimitedError = error;
       }
       console.error(`[ai] ${provider} chat failed`, error);
+    }
+  }
+
+  if (rateLimitedError) {
+    throw rateLimitedError;
+  }
+
+  throw new VotingDatabaseError(
+    "delivery_failed",
+    "Unable to reach an AI provider. Please ensure at least one provider key is configured.",
+  );
+};
+
+type BuildDraftInput = {
+  db: VotingDatabase;
+  sessionId: string | null;
+  propositionId: string;
+  providerPreference?: AiProviderPreference;
+  fetchImpl?: typeof fetch;
+  clientIpAddress?: string | null;
+};
+
+export const getPolicyDraft = async ({
+  db,
+  sessionId,
+  propositionId,
+  providerPreference,
+  fetchImpl = fetch,
+  clientIpAddress = null,
+}: BuildDraftInput): Promise<PropositionAiDraftResponse> => {
+  const session = getResolvedSession(db, sessionId);
+  if (!session) {
+    throw new VotingDatabaseError("authentication_required", "Sign in with a university account to generate a draft policy.");
+  }
+
+  const detail = getPropositionDetailById(db, sessionId, propositionId).proposition;
+  if (detail.status !== "closed") {
+    throw new VotingDatabaseError("invalid_request", "Choose a closed policy from the history view.");
+  }
+
+  const requestedProvider = normalizeProviderPreference(providerPreference);
+  const contentHash = hashPropositionContext(detail);
+  const cached = getCachedAiPolicyDraft(db, propositionId, requestedProvider, contentHash, DRAFT_PROMPT_VERSION);
+  if (cached) {
+    return {
+      ...cached,
+      cached: true,
+    };
+  }
+
+  const prompt = buildDraftPrompt(detail);
+  const providers = getProviderCandidates(requestedProvider);
+  let rateLimitedError: VotingDatabaseError | null = null;
+
+  for (const provider of providers) {
+    let parsed: DraftPayload;
+    try {
+      parsed = await providerDraft(provider, prompt, fetchImpl);
+    } catch (error) {
+      if (error instanceof VotingDatabaseError) {
+        if (error.code === "rate_limited") {
+          rateLimitedError = error;
+        }
+
+        console.error(`[ai] ${provider} draft failed`, error);
+        continue;
+      }
+
+      console.error(`[ai] ${provider} draft failed`, error);
+      continue;
+    }
+
+    try {
+      const created = createProposition(
+        db,
+        sessionId,
+        {
+          title: parsed.title,
+          category: parsed.category,
+          scope: parsed.scope,
+          tldr: parsed.tldr,
+          bullets: parsed.bullets,
+          brief: parsed.brief,
+          closesAt: new Date(Date.now() + DRAFT_CLOSE_OFFSET_MS).toISOString(),
+        },
+        clientIpAddress,
+      );
+
+      const payload = buildDraftResponse(
+        {
+          sourcePropositionId: detail.id,
+          sourcePropositionTitle: detail.title,
+          sourceSupportPercent: detail.supportPercent,
+          sourceTurnoutCount: detail.turnoutCount,
+          requestedProvider,
+          providerUsed: provider,
+          rationale: parsed.rationale,
+          proposition: created.proposition,
+        },
+        provider,
+        false,
+      );
+      storeAiPolicyDraft(db, payload, contentHash, DRAFT_PROMPT_VERSION);
+      return payload;
+    } catch (error) {
+      if (error instanceof VotingDatabaseError && error.code === "invalid_request") {
+        console.error(`[ai] ${provider} draft creation failed`, error);
+        continue;
+      }
+
+      throw error;
     }
   }
 

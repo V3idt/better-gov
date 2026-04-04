@@ -139,6 +139,19 @@ CREATE TABLE IF NOT EXISTS ai_chat_answers (
   UNIQUE(policy_id, audience_role, requested_provider, question_hash, content_hash, prompt_version)
 );
 
+CREATE TABLE IF NOT EXISTS ai_policy_drafts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  policy_id TEXT NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+  requested_provider TEXT NOT NULL CHECK (requested_provider IN ('auto', 'openai', 'gemini', 'grok')),
+  provider_used TEXT NOT NULL CHECK (provider_used IN ('openai', 'gemini', 'grok', 'fallback')),
+  content_hash TEXT NOT NULL,
+  prompt_version TEXT NOT NULL,
+  draft_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(policy_id, requested_provider, content_hash, prompt_version)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_person_id ON sessions(person_id);
 CREATE INDEX IF NOT EXISTS idx_votes_policy_id ON votes(policy_id);
 CREATE INDEX IF NOT EXISTS idx_votes_person_id ON votes(person_id);
@@ -153,3 +166,4 @@ CREATE INDEX IF NOT EXISTS idx_roster_members_email ON roster_members(university
 CREATE INDEX IF NOT EXISTS idx_email_codes_email_created ON email_verification_codes(university_email, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_explanations_policy_role_provider ON ai_explanations(policy_id, audience_role, requested_provider);
 CREATE INDEX IF NOT EXISTS idx_ai_chat_answers_policy_role_provider ON ai_chat_answers(policy_id, audience_role, requested_provider);
+CREATE INDEX IF NOT EXISTS idx_ai_policy_drafts_policy_provider ON ai_policy_drafts(policy_id, requested_provider);

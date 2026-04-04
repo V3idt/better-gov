@@ -136,6 +136,23 @@ export type PropositionAiChatResponse = {
   sourcesUsed: string[];
 };
 
+export type PropositionAiDraftRequest = {
+  provider?: AiProviderPreference;
+};
+
+export type PropositionAiDraftResponse = {
+  sourcePropositionId: string;
+  sourcePropositionTitle: string;
+  sourceSupportPercent: number | null;
+  sourceTurnoutCount: number;
+  requestedProvider: AiProviderPreference;
+  providerUsed: AiProviderUsed;
+  cached: boolean;
+  generatedAt: string;
+  rationale: string;
+  proposition: PropositionDetail;
+};
+
 export type AuthenticatedSessionResponse = {
   authenticated: true;
   session: SessionRecord;

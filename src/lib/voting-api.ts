@@ -5,6 +5,8 @@ import type {
   PropositionAiExplanationRequest,
   PropositionAiChatRequest,
   PropositionAiChatResponse,
+  PropositionAiDraftRequest,
+  PropositionAiDraftResponse,
   PropositionAiExplanationResponse,
   PropositionHistoryResponse,
   PropositionListResponse,
@@ -89,7 +91,7 @@ export const getPropositionAiExplanation = (
     body: JSON.stringify({
       role: input.role,
       ...(input.provider ? { provider: input.provider } : {}),
-      }),
+    }),
   });
 
 export const getPropositionAiChatAnswer = (
@@ -101,6 +103,17 @@ export const getPropositionAiChatAnswer = (
     body: JSON.stringify({
       role: input.role,
       question: input.question,
+      ...(input.provider ? { provider: input.provider } : {}),
+    }),
+  });
+
+export const createPropositionAiDraft = (
+  propositionId: string,
+  input: PropositionAiDraftRequest,
+) =>
+  request<PropositionAiDraftResponse>(`/propositions/${encodeURIComponent(propositionId)}/ai-draft`, {
+    method: "POST",
+    body: JSON.stringify({
       ...(input.provider ? { provider: input.provider } : {}),
     }),
   });
