@@ -1,7 +1,8 @@
-import { Search } from "lucide-react";
-import { useState } from "react";
+import { ArrowDown, ArrowUp, Search } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import {
   listPropositions,
   propositionListQueryKey,
@@ -9,30 +10,53 @@ import {
 import { formatSupportPercent } from "@/lib/voting";
 
 type Tab = "all" | "closing" | "draft";
+type SupportSortDirection = "desc" | "asc";
 
 const LeaderboardTable = () => {
   const [activeTab, setActiveTab] = useState<Tab>("all");
   const [search, setSearch] = useState("");
+  const [supportSortDirection, setSupportSortDirection] = useState<SupportSortDirection>("desc");
   const propositionsQuery = useQuery({
     queryKey: propositionListQueryKey,
     queryFn: listPropositions,
   });
 
   const propositions = propositionsQuery.data?.propositions ?? [];
-  const filtered = propositions.filter((item) => {
-    const matchesTab =
-      (activeTab === "all" && item.status !== "draft") ||
-      (activeTab === "closing" && item.status === "closing_soon") ||
-      (activeTab === "draft" && item.status === "draft");
-
+  const filtered = useMemo(() => {
     const query = search.toLowerCase();
-    const matchesSearch =
-      item.title.toLowerCase().includes(query) ||
-      item.category.toLowerCase().includes(query) ||
-      item.jurisdiction.toLowerCase().includes(query);
 
-    return matchesTab && matchesSearch;
-  });
+    return propositions.filter((item) => {
+      const matchesTab =
+        (activeTab === "all" && item.status !== "draft") ||
+        (activeTab === "closing" && item.status === "closing_soon") ||
+        (activeTab === "draft" && item.status === "draft");
+
+      const matchesSearch =
+        item.title.toLowerCase().includes(query) ||
+        item.category.toLowerCase().includes(query) ||
+        item.jurisdiction.toLowerCase().includes(query);
+
+      return matchesTab && matchesSearch;
+    });
+  }, [activeTab, propositions, search]);
+
+  const sorted = useMemo(() => {
+    const nullSupportRank = supportSortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+
+    return [...filtered].sort((left, right) => {
+      const leftSupport = left.supportPercent ?? nullSupportRank;
+      const rightSupport = right.supportPercent ?? nullSupportRank;
+
+      if (leftSupport === rightSupport) {
+        return left.title.localeCompare(right.title);
+      }
+
+      return supportSortDirection === "asc" ? leftSupport - rightSupport : rightSupport - leftSupport;
+    });
+  }, [filtered, supportSortDirection]);
+
+  const supportSortLabel = supportSortDirection === "asc" ? "Support ↑" : "Support ↓";
+  const SupportSortIcon = supportSortDirection === "asc" ? ArrowUp : ArrowDown;
 
   return (
     <div className="w-full">
@@ -86,7 +110,20 @@ const LeaderboardTable = () => {
       <div className="mb-2 grid grid-cols-[32px_minmax(0,1fr)_72px] px-2 text-xs uppercase tracking-wider text-muted-foreground sm:grid-cols-[40px_minmax(0,1fr)_80px]">
         <span>#</span>
         <span>Proposition</span>
-        <span className="text-right">Support</span>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              setSupportSortDirection((current) => (current === "desc" ? "asc" : "desc"))
+            }
+            className="h-auto px-0 py-0 text-xs uppercase tracking-wider text-muted-foreground hover:bg-transparent hover:text-foreground"
+          >
+            <span>{supportSortLabel}</span>
+            <SupportSortIcon className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       <div className="divide-y divide-border">
@@ -94,10 +131,10 @@ const LeaderboardTable = () => {
           <div className="px-2 py-6 text-sm text-muted-foreground">Loading propositions ...</div>
         ) : propositionsQuery.isError ? (
           <div className="px-2 py-6 text-sm text-red-500">Could not load propositions.</div>
-        ) : filtered.length === 0 ? (
+        ) : sorted.length === 0 ? (
           <div className="px-2 py-6 text-sm text-muted-foreground">No propositions match this view.</div>
         ) : (
-          filtered.map((item, index) => (
+          sorted.map((item, index) => (
             <Link
               key={item.id}
               to={item.path}
