@@ -77,7 +77,7 @@ const Audits = () => {
     onSuccess: async (payload) => {
       await queryClient.invalidateQueries({ queryKey: propositionListQueryKey });
       await queryClient.invalidateQueries({ queryKey: propositionHistoryQueryKey });
-      toast.success(`Draft created from ${payload.sourcePropositionTitle}.`);
+      toast.success(`Policy created from ${payload.sourcePropositionTitle}.`);
       navigate(payload.proposition.path);
     },
   });
@@ -103,11 +103,11 @@ const Audits = () => {
               <div className="space-y-1">
                 <CardTitle className="text-sm uppercase tracking-[0.16em]">AI policy builder</CardTitle>
                 <CardDescription className="max-w-2xl leading-relaxed">
-                  Start from the most-supported closed policy and auto-create a follow-up draft for the people who supported it.
+                  Start from the most-supported closed policy and auto-create a follow-up open policy for the people who supported it.
                 </CardDescription>
               </div>
               <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
-                Auto-create
+                Open policy
               </Badge>
             </div>
           </CardHeader>
@@ -137,14 +137,14 @@ const Audits = () => {
                       <SelectTrigger className="border-border bg-background/60 font-mono text-xs uppercase tracking-[0.16em]">
                         <SelectValue placeholder="Choose provider" />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="auto">Auto</SelectItem>
-                        <SelectItem value="openai">OpenAI</SelectItem>
-                        <SelectItem value="gemini">Gemini</SelectItem>
-                        <SelectItem value="grok">Grok</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button
+                    <SelectContent>
+                      <SelectItem value="auto">Auto</SelectItem>
+                      <SelectItem value="openai">OpenAI</SelectItem>
+                      <SelectItem value="gemini">Gemini</SelectItem>
+                      <SelectItem value="grok">Grok</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
                       type="button"
                       className="w-full bg-foreground text-background hover:bg-foreground/90"
                       disabled={draftMutation.isPending}
@@ -157,7 +157,7 @@ const Audits = () => {
                         draftMutation.mutate();
                       }}
                     >
-                      {draftMutation.isPending ? "Creating..." : "Generate draft"}
+                      {draftMutation.isPending ? "Creating..." : "Generate policy"}
                     </Button>
                   </div>
                 </div>
@@ -170,7 +170,7 @@ const Audits = () => {
               </>
             ) : (
               <div className="rounded border border-border bg-background/60 p-4 text-sm text-muted-foreground">
-                No closed proposition is available yet for draft generation.
+                No closed proposition is available yet for policy generation.
               </div>
             )}
           </CardContent>
@@ -200,7 +200,17 @@ const Audits = () => {
                 <span className="text-sm text-muted-foreground">{index + 1}</span>
                 <div className="min-w-0">
                   <div className="flex min-w-0 flex-col gap-1">
-                    <span className="break-words text-sm font-semibold text-foreground">{proposition.title}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="break-words text-sm font-semibold text-foreground">{proposition.title}</span>
+                      {proposition.aiGenerated ? (
+                        <Badge
+                          variant="outline"
+                          className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]"
+                        >
+                          AI
+                        </Badge>
+                      ) : null}
+                    </div>
                     <span className="text-xs text-muted-foreground">
                       {proposition.category} / Closed {new Date(proposition.closesAt).toLocaleDateString()} / {formatTurnout(proposition.turnoutCount)}
                     </span>

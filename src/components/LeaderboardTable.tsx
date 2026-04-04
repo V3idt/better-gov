@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   getSession,
@@ -239,7 +240,17 @@ const LeaderboardTable = () => {
               <span className="text-sm text-muted-foreground">{index + 1}</span>
               <div className="min-w-0">
                 <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-2">
-                  <span className="break-words text-sm font-semibold text-foreground">{item.title}</span>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="break-words text-sm font-semibold text-foreground">{item.title}</span>
+                    {item.aiGenerated ? (
+                      <Badge
+                        variant="outline"
+                        className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]"
+                      >
+                        AI
+                      </Badge>
+                    ) : null}
+                  </div>
                   <span className="min-w-0 break-all text-xs font-mono text-muted-foreground">
                     {item.jurisdiction} / {item.category} / {item.status.replace("_", " ")}
                   </span>

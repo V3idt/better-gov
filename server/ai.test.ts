@@ -335,6 +335,9 @@ describe("policy AI explainer", () => {
     expect(second.cached).toBe(true);
     expect(first.providerUsed).toBe("gemini");
     expect(first.proposition.status).toBe("open");
+    expect(first.proposition.aiGenerated).toBe(true);
+    expect(first.proposition.aiOrigin?.sourcePropositionId).toBe("academic-senate:mandatory-attendance-policy");
+    expect(first.proposition.brief).toContain("Why this policy was created");
     expect(first.proposition.title).toBe("Residence Hall Quiet Hours Upgrade");
     expect(second.proposition.id).toBe(first.proposition.id);
     expect(fetchCount).toBe(1);

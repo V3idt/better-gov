@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS policies (
   status TEXT NOT NULL CHECK (status IN ('open', 'closed', 'draft')),
   closes_at TEXT NOT NULL,
   source_path TEXT NOT NULL,
+  ai_generated INTEGER NOT NULL DEFAULT 0,
+  ai_source_policy_id TEXT,
+  ai_rationale TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

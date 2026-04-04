@@ -386,7 +386,14 @@ const SkillDetail = () => {
 
             <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1fr_280px]">
               <div>
-                <h1 className="mb-4 break-words text-3xl font-semibold text-foreground">{proposition.title}</h1>
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <h1 className="break-words text-3xl font-semibold text-foreground">{proposition.title}</h1>
+                  {proposition.aiGenerated ? (
+                    <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
+                      AI
+                    </Badge>
+                  ) : null}
+                </div>
 
                 <div className="mb-6 flex items-start gap-3 rounded-lg bg-secondary/50 px-4 py-3">
                   <span className="pt-0.5 text-muted-foreground">$</span>
@@ -482,6 +489,25 @@ const SkillDetail = () => {
                     </ul>
                   ) : null}
                 </div>
+
+                {proposition.aiGenerated && proposition.aiOrigin ? (
+                  <div className="mb-6 rounded-lg border border-border bg-secondary/20 p-5">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
+                        AI policy
+                      </Badge>
+                      <span className="text-xs uppercase tracking-wider text-muted-foreground">Created from a supported policy</span>
+                    </div>
+                    <p className="mb-2 text-sm text-muted-foreground">
+                      Based on{" "}
+                      <Link to={proposition.aiOrigin.sourcePropositionPath} className="text-foreground underline underline-offset-4 hover:text-muted-foreground">
+                        {proposition.aiOrigin.sourcePropositionTitle}
+                      </Link>{" "}
+                      and posted as a new open proposition for voting.
+                    </p>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{proposition.aiOrigin.rationale}</p>
+                  </div>
+                ) : null}
 
                 <Collapsible open={aiOpen} onOpenChange={setAiOpen}>
                   <Card className="mb-6 border-border bg-secondary/20">

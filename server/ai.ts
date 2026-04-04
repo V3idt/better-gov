@@ -5,6 +5,7 @@ import {
   getCachedAiPolicyDraft,
   getPropositionDetailById,
   getResolvedSession,
+  markPropositionAiGenerated,
   storeAiPolicyDraft,
   storeAiExplanation,
   storeAiChatAnswer,
@@ -292,8 +293,8 @@ const buildChatPrompt = (detail: PropositionDetail, role: AiAudienceRole, questi
 
 const buildDraftPrompt = (detail: PropositionDetail) =>
   [
-    "You are helping a university governance team design a follow-up policy.",
-    "Create a new draft that strengthens, extends, or complements the source policy.",
+    "You are helping a university governance team design a follow-up open policy.",
+    "Create a new policy that strengthens, extends, or complements the source policy.",
     "Assume the draft should appeal to the people who supported the source policy and benefit them directly.",
     "Use only the policy information provided below.",
     "Stay balanced and factual.",
@@ -316,6 +317,17 @@ const buildDraftPrompt = (detail: PropositionDetail) =>
     "",
     "Full brief:",
     detail.brief,
+  ].join("\n");
+
+const buildAiPolicyBrief = (brief: string, rationale: string, detail: PropositionDetail) =>
+  [
+    brief.trim(),
+    "",
+    "## Why this policy was created",
+    rationale.trim(),
+    "",
+    "## Source policy",
+    `${detail.title} (${detail.path})`,
   ].join("\n");
 
 const extractJsonText = (raw: string) => {
@@ -1083,7 +1095,7 @@ export const getPolicyDraft = async ({
 }: BuildDraftInput): Promise<PropositionAiDraftResponse> => {
   const session = getResolvedSession(db, sessionId);
   if (!session) {
-    throw new VotingDatabaseError("authentication_required", "Sign in with a university account to generate a draft policy.");
+    throw new VotingDatabaseError("authentication_required", "Sign in with a university account to generate a policy.");
   }
 
   const detail = getPropositionDetailById(db, sessionId, propositionId).proposition;
@@ -1133,11 +1145,14 @@ export const getPolicyDraft = async ({
           scope: parsed.scope,
           tldr: parsed.tldr,
           bullets: parsed.bullets,
-          brief: parsed.brief,
+          brief: buildAiPolicyBrief(parsed.brief, parsed.rationale, detail),
           closesAt: new Date(Date.now() + DRAFT_CLOSE_OFFSET_MS).toISOString(),
         },
         clientIpAddress,
       );
+
+      markPropositionAiGenerated(db, created.proposition.id, detail.id, parsed.rationale);
+      const createdWithMetadata = getPropositionDetailById(db, sessionId, created.proposition.id);
 
       const payload = buildDraftResponse(
         {
@@ -1148,7 +1163,7 @@ export const getPolicyDraft = async ({
           requestedProvider,
           providerUsed: provider,
           rationale: parsed.rationale,
-          proposition: created.proposition,
+          proposition: createdWithMetadata.proposition,
         },
         provider,
         false,

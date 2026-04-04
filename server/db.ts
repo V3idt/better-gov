@@ -117,6 +117,9 @@ type PropositionRow = {
   lifecycle_status: "open" | "closed" | "draft";
   closes_at: string;
   source_path: string;
+  ai_generated: number;
+  ai_source_policy_id: string | null;
+  ai_rationale: string | null;
   created_at: string;
   updated_at: string;
   jurisdiction_label: string;
@@ -385,10 +388,13 @@ const policySql = `
     status,
     closes_at,
     source_path,
+    ai_generated,
+    ai_source_policy_id,
+    ai_rationale,
     created_at,
     updated_at
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     slug = excluded.slug,
     jurisdiction_slug = excluded.jurisdiction_slug,
@@ -396,8 +402,30 @@ const policySql = `
     status = excluded.status,
     closes_at = excluded.closes_at,
     source_path = excluded.source_path,
+    ai_generated = excluded.ai_generated,
+    ai_source_policy_id = excluded.ai_source_policy_id,
+    ai_rationale = excluded.ai_rationale,
     updated_at = excluded.updated_at
 `;
+
+export const markPropositionAiGenerated = (
+  db: Database,
+  propositionId: string,
+  sourcePropositionId: string,
+  rationale: string,
+) => {
+  const timestamp = now();
+  db.prepare(
+    `
+      UPDATE policies
+      SET ai_generated = 1,
+          ai_source_policy_id = ?,
+          ai_rationale = ?,
+          updated_at = ?
+      WHERE id = ?
+    `,
+  ).run(sourcePropositionId, normalizeText(rationale), timestamp, propositionId);
+};
 
 const propositionDetailSql = `
   INSERT INTO proposition_details (
@@ -570,6 +598,9 @@ const propositionSelect = `
     p.status AS lifecycle_status,
     p.closes_at,
     p.source_path,
+    p.ai_generated,
+    p.ai_source_policy_id,
+    p.ai_rationale,
     p.created_at,
     p.updated_at,
     d.jurisdiction_label,
@@ -1179,6 +1210,7 @@ const toPropositionSummary = (
   displayOrder: row.display_order,
   isUserPosted: row.is_user_posted === 1,
   personalizationReason,
+  aiGenerated: row.ai_generated === 1,
 });
 
 const toPropositionDetail = (
@@ -1186,16 +1218,39 @@ const toPropositionDetail = (
   row: PropositionRow,
   counts: VoteCounts,
   myVote: VoteRecord | null,
-): PropositionDetail => ({
-  ...toPropositionSummary(row, counts),
-  scope: row.scope,
-  tldr: row.tldr,
-  bullets: loadPropositionBullets(db, row.id),
-  reviewChecks: loadPropositionReviewChecks(db, row.id),
-  voteBreakdown: voteBreakdownForCounts(counts),
-  brief: row.brief,
-  myVote,
-});
+): PropositionDetail => {
+  const aiOrigin =
+    row.ai_generated === 1 && row.ai_source_policy_id && row.ai_rationale
+      ? (() => {
+          const sourceRow = loadPropositionById(db, row.ai_source_policy_id);
+          if (!sourceRow) {
+            return null;
+          }
+
+          const sourceCounts = loadVoteCounts(db, sourceRow.id);
+          return {
+            sourcePropositionId: sourceRow.id,
+            sourcePropositionTitle: sourceRow.title,
+            sourcePropositionPath: sourceRow.source_path,
+            sourceSupportPercent: supportPercentForCounts(sourceCounts),
+            sourceTurnoutCount: sourceCounts.total,
+            rationale: row.ai_rationale,
+          };
+        })()
+      : null;
+
+  return {
+    ...toPropositionSummary(row, counts),
+    scope: row.scope,
+    tldr: row.tldr,
+    bullets: loadPropositionBullets(db, row.id),
+    reviewChecks: loadPropositionReviewChecks(db, row.id),
+    voteBreakdown: voteBreakdownForCounts(counts),
+    brief: row.brief,
+    myVote,
+    aiOrigin,
+  };
+};
 
 const seedPropositions = (db: Database) => {
   const timestamp = "2026-04-04T08:00:00.000Z";
@@ -1209,6 +1264,9 @@ const seedPropositions = (db: Database) => {
       proposition.status,
       proposition.closesAt,
       proposition.path,
+      0,
+      null,
+      null,
       timestamp,
       timestamp,
     );
@@ -1314,6 +1372,22 @@ const initializeDatabase = (db: Database) => {
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA busy_timeout = 5000;");
   db.exec(MIGRATION_SQL);
+  const policyColumns = new Set(
+    (db.prepare(`PRAGMA table_info(policies)`).all() as Array<{ name: string }>).map((column) => column.name),
+  );
+
+  if (!policyColumns.has("ai_generated")) {
+    db.exec(`ALTER TABLE policies ADD COLUMN ai_generated INTEGER NOT NULL DEFAULT 0;`);
+  }
+
+  if (!policyColumns.has("ai_source_policy_id")) {
+    db.exec(`ALTER TABLE policies ADD COLUMN ai_source_policy_id TEXT;`);
+  }
+
+  if (!policyColumns.has("ai_rationale")) {
+    db.exec(`ALTER TABLE policies ADD COLUMN ai_rationale TEXT;`);
+  }
+
   seedPropositions(db);
   seedRoster(db);
   db.prepare(`UPDATE policies SET status = 'open', updated_at = ? WHERE status = 'draft'`).run(now());
@@ -1744,6 +1818,9 @@ export const createProposition = (
       "open",
       validated.closesAt,
       path,
+      0,
+      null,
+      null,
       timestamp,
       timestamp,
     );

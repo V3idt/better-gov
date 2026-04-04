@@ -59,6 +59,16 @@ export type PropositionSummary = {
   displayOrder: number;
   isUserPosted: boolean;
   personalizationReason: string | null;
+  aiGenerated: boolean;
+};
+
+export type PropositionAiOrigin = {
+  sourcePropositionId: string;
+  sourcePropositionTitle: string;
+  sourcePropositionPath: string;
+  sourceSupportPercent: number | null;
+  sourceTurnoutCount: number;
+  rationale: string;
 };
 
 export type PropositionDetail = PropositionSummary & {
@@ -69,6 +79,7 @@ export type PropositionDetail = PropositionSummary & {
   voteBreakdown: PropositionBreakdownItem[];
   brief: string;
   myVote: VoteRecord | null;
+  aiOrigin: PropositionAiOrigin | null;
 };
 
 export type PropositionHistoryItem = PropositionSummary & {
