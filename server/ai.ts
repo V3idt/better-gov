@@ -46,9 +46,10 @@ const draftSchema = z.object({
   scope: z.string().min(1),
   tldr: z.string().min(1),
   bullets: z.array(z.string().min(1)).min(2).max(6),
-  brief: z.string().min(1),
   rationale: z.string().min(1),
 });
+
+type DraftPayload = z.infer<typeof draftSchema>;
 
 const explanationJsonSchema = {
   type: "object",
@@ -96,10 +97,9 @@ const draftJsonSchema = {
       type: "array",
       items: { type: "string" },
     },
-    brief: { type: "string" },
     rationale: { type: "string" },
   },
-  required: ["title", "category", "scope", "tldr", "bullets", "brief", "rationale"],
+  required: ["title", "category", "scope", "tldr", "bullets", "rationale"],
 } as const;
 
 type ProviderConfig = {
@@ -300,9 +300,8 @@ const buildDraftPrompt = (detail: PropositionDetail) =>
     "Stay balanced and factual.",
     "Do not copy the source policy wording.",
     "Write in plain language for a university audience.",
-    "Return valid JSON only with keys title, category, scope, tldr, bullets, brief, rationale.",
+    "Return valid JSON only with keys title, category, scope, tldr, bullets, rationale.",
     "bullets must be short practical points.",
-    "brief should be a concise markdown policy brief with headings and tradeoffs.",
     "Keep the draft specific enough that it could be posted immediately.",
     "",
     `Source policy title: ${detail.title}`,
@@ -314,20 +313,26 @@ const buildDraftPrompt = (detail: PropositionDetail) =>
     `TL;DR: ${detail.tldr}`,
     `Quick read: ${detail.reviewChecks.map((check) => `${check.name}=${check.status}`).join(", ")}`,
     `Bullet points: ${detail.bullets.map((bullet) => `- ${bullet}`).join("\n")}`,
-    "",
-    "Full brief:",
-    detail.brief,
   ].join("\n");
 
-const buildAiPolicyBrief = (brief: string, rationale: string, detail: PropositionDetail) =>
+const buildAiPolicyBrief = (draft: DraftPayload, detail: PropositionDetail) =>
   [
-    brief.trim(),
+    `# ${draft.title}`,
+    "",
+    "## Purpose",
+    draft.tldr.trim(),
     "",
     "## Why this policy was created",
-    rationale.trim(),
+    draft.rationale.trim(),
+    "",
+    "## Key changes",
+    draft.bullets.map((bullet) => `- ${bullet.trim()}`).join("\n"),
     "",
     "## Source policy",
     `${detail.title} (${detail.path})`,
+    "",
+    "## Tradeoff",
+    `This policy was generated to build on support for ${detail.title} while keeping the benefits focused on the people who backed the original proposal.`,
   ].join("\n");
 
 const extractJsonText = (raw: string) => {
@@ -724,7 +729,7 @@ const openAiDraft = async (
         {
           role: "system",
           content:
-            "Return only valid JSON with keys title, category, scope, tldr, bullets, brief, rationale. Do not include markdown fences.",
+            "Return only valid JSON with keys title, category, scope, tldr, bullets, rationale. Do not include markdown fences.",
         },
         { role: "user", content: prompt },
       ],
@@ -768,7 +773,7 @@ const geminiDraft = async (
         contents: [
           {
             role: "user",
-            parts: [{ text: `Return only valid JSON with keys title, category, scope, tldr, bullets, brief, rationale.\n\n${prompt}` }],
+            parts: [{ text: `Return only valid JSON with keys title, category, scope, tldr, bullets, rationale.\n\n${prompt}` }],
           },
         ],
         generationConfig: {
@@ -824,7 +829,7 @@ const grokDraft = async (
         {
           role: "system",
           content:
-            "Return only valid JSON with keys title, category, scope, tldr, bullets, brief, rationale. Do not include markdown fences.",
+            "Return only valid JSON with keys title, category, scope, tldr, bullets, rationale. Do not include markdown fences.",
         },
         { role: "user", content: prompt },
       ],
@@ -1145,7 +1150,7 @@ export const getPolicyDraft = async ({
           scope: parsed.scope,
           tldr: parsed.tldr,
           bullets: parsed.bullets,
-          brief: buildAiPolicyBrief(parsed.brief, parsed.rationale, detail),
+          brief: buildAiPolicyBrief(parsed, detail),
           closesAt: new Date(Date.now() + DRAFT_CLOSE_OFFSET_MS).toISOString(),
         },
         clientIpAddress,
