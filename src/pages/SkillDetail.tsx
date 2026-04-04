@@ -770,6 +770,23 @@ const SkillDetail = () => {
                 </div>
 
                 <div>
+                  <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Current Split</h3>
+                  <div className="space-y-2">
+                    {proposition.voteBreakdown.map((result) => (
+                      <div key={result.label} className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">{result.label}</span>
+                        <span className="flex items-center gap-2 font-mono">
+                          <span className={`rounded px-2 py-0.5 text-xs ${splitPillClass(result.label)}`}>
+                            {result.share.toFixed(1)}%
+                          </span>
+                          <span className="text-foreground">{formatCompactCount(result.count)}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
                   <h3 className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Quick Read</h3>
                   {proposition.reviewChecks.length > 0 ? (
                     <>
@@ -788,23 +805,6 @@ const SkillDetail = () => {
                   ) : (
                     <p className="text-sm text-muted-foreground">No quick read has been added yet.</p>
                   )}
-                </div>
-
-                <div>
-                  <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Current Split</h3>
-                  <div className="space-y-2">
-                    {proposition.voteBreakdown.map((result) => (
-                      <div key={result.label} className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">{result.label}</span>
-                        <span className="flex items-center gap-2 font-mono">
-                          <span className={`rounded px-2 py-0.5 text-xs ${splitPillClass(result.label)}`}>
-                            {result.share.toFixed(1)}%
-                          </span>
-                          <span className="text-foreground">{formatCompactCount(result.count)}</span>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
 
                 <div>
