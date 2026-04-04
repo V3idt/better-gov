@@ -327,6 +327,9 @@ const toVote = (row: VoteRow): VoteRecord => ({
   updatedAt: row.updated_at,
 });
 
+const syntheticClosedVoterId = (propositionId: string, choice: VoteChoice, index: number) =>
+  `person_seed_${propositionId.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}_${choice}_${index + 1}`;
+
 const personSql = `
   INSERT INTO people (id, display_name, primary_role, created_at, updated_at)
   VALUES (?, ?, ?, ?, ?)
@@ -964,6 +967,31 @@ const seedPropositions = (db: Database) => {
         `,
       ).run(proposition.id, index, check.name, check.status);
     });
+
+    if (proposition.status === "closed") {
+      db.prepare(`DELETE FROM votes WHERE policy_id = ?`).run(proposition.id);
+
+      const seededVotes = proposition.seedVotes ?? { approve: 0, reject: 0, abstain: 0 };
+      const voteChoices = [
+        ["approve", seededVotes.approve],
+        ["reject", seededVotes.reject],
+        ["abstain", seededVotes.abstain],
+      ] as const;
+
+      for (const [choice, count] of voteChoices) {
+        for (let index = 0; index < count; index += 1) {
+          const personId = syntheticClosedVoterId(proposition.id, choice, index);
+          db.prepare(personSql).run(
+            personId,
+            `Archived voter ${index + 1}`,
+            "student",
+            timestamp,
+            timestamp,
+          );
+          db.prepare(voteSql).run(proposition.id, personId, choice, timestamp, timestamp);
+        }
+      }
+    }
   }
 };
 

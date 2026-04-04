@@ -56,6 +56,8 @@ describe("voting database", () => {
 
     expect(history.propositions.length).toBeGreaterThan(0);
     expect(history.propositions.every((item) => item.status === "closed")).toBe(true);
+    expect(history.propositions.some((item) => item.outcome === "NO_RESULT")).toBe(false);
+    expect(history.propositions.every((item) => item.turnoutCount > 0)).toBe(true);
   });
 
   it("keeps anonymous visitors unauthenticated until they verify a university email code", async () => {

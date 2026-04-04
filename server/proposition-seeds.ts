@@ -19,6 +19,11 @@ export type SeedProposition = {
   brief: string;
   displayOrder: number;
   path: string;
+  seedVotes?: {
+    approve: number;
+    reject: number;
+    abstain: number;
+  };
 };
 
 const openPropositions: SeedProposition[] = ballotItems.map((item) => ({
@@ -82,6 +87,11 @@ Create a short mid-semester academic break to reduce burnout and compress fewer 
 The university has to rebalance the term timeline without reducing instructional time.`,
     displayOrder: 101,
     path: propositionPathFromParts("academic-calendar", "spring-reading-week"),
+    seedVotes: {
+      approve: 812,
+      reject: 276,
+      abstain: 94,
+    },
   },
   {
     id: propositionIdFromParts("finance-office", "late-tuition-fee-relief"),
@@ -123,6 +133,11 @@ Reduce disproportionate penalties on students who miss tuition deadlines because
 The finance office still needs predictable tuition collection and a narrow fraud surface.`,
     displayOrder: 102,
     path: propositionPathFromParts("finance-office", "late-tuition-fee-relief"),
+    seedVotes: {
+      approve: 653,
+      reject: 301,
+      abstain: 88,
+    },
   },
   {
     id: propositionIdFromParts("academic-senate", "mandatory-attendance-policy"),
@@ -162,6 +177,11 @@ Shared expectations improve consistency and reduce confusion across departments.
 The rule would punish students with illness, care obligations, and work constraints more than it improves learning.`,
     displayOrder: 103,
     path: propositionPathFromParts("academic-senate", "mandatory-attendance-policy"),
+    seedVotes: {
+      approve: 284,
+      reject: 719,
+      abstain: 67,
+    },
   },
   {
     id: propositionIdFromParts("technology-services", "campus-wifi-upgrade-fund"),
@@ -203,6 +223,11 @@ Move network upgrades out of one-off budgeting and into a predictable funded cyc
 The fund competes with other capital priorities in the annual budget.`,
     displayOrder: 104,
     path: propositionPathFromParts("technology-services", "campus-wifi-upgrade-fund"),
+    seedVotes: {
+      approve: 741,
+      reject: 224,
+      abstain: 52,
+    },
   },
   {
     id: propositionIdFromParts("housing", "residence-hall-guest-curfew"),
@@ -242,6 +267,11 @@ Residents argued that a universal curfew would interfere with autonomy and dispr
 Housing staff would have needed a uniform enforcement workflow and appeal process.`,
     displayOrder: 105,
     path: propositionPathFromParts("housing", "residence-hall-guest-curfew"),
+    seedVotes: {
+      approve: 198,
+      reject: 854,
+      abstain: 61,
+    },
   },
 ];
 
