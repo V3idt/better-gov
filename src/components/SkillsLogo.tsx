@@ -1,16 +1,39 @@
-const SkillsLogo = () => {
-  const shadow = `[[ better-gov ]]`;
+type SkillsLogoProps = {
+  variant?: "hero" | "nav";
+};
 
-  const foreground = `<< better-gov >>`;
+const WORDMARK = ` _         _   _                            
+| |__  ___| |_| |_ ___ _ _ ___ __ _ _____ __
+| '_ \\/ -_)  _|  _/ -_) '_|___/ _\` / _ \\ V /
+|_.__/\\___|\\__|\\__\\___|_|     \\__, \\___/\\_/ 
+                              |___/         `;
+
+const SkillsLogo = ({ variant = "hero" }: SkillsLogoProps) => {
+  const isNav = variant === "nav";
 
   return (
-    <div className="relative w-full flex items-start justify-center lg:justify-start overflow-hidden select-none" aria-label="BETTER GOV">
-      <div className="relative max-w-full overflow-hidden">
-        <pre className="text-[20px] lg:text-[28px] tracking-[-0.06em] leading-none text-muted-foreground whitespace-pre font-mono">
-          {shadow}
+    <div
+      className={`relative w-full select-none ${isNav ? "flex items-center justify-start" : "flex items-start justify-center overflow-hidden lg:justify-start"}`}
+      aria-label="better-gov"
+    >
+      <div className="relative w-fit max-w-full">
+        <pre
+          className={`pointer-events-none whitespace-pre font-mono text-muted-foreground ${
+            isNav
+              ? "translate-x-px translate-y-px text-[3px] leading-[1] sm:text-[4px]"
+              : "translate-x-px translate-y-px text-[4px] leading-[1] sm:text-[5px] md:text-[6px] lg:text-[7px]"
+          }`}
+        >
+          {WORDMARK}
         </pre>
-        <pre className="absolute top-0 left-0 text-[20px] lg:text-[28px] tracking-[-0.06em] leading-none text-foreground whitespace-pre font-mono">
-          {foreground}
+        <pre
+          className={`pointer-events-none absolute left-0 top-0 whitespace-pre font-mono text-foreground ${
+            isNav
+              ? "text-[3px] leading-[1] sm:text-[4px]"
+              : "text-[4px] leading-[1] sm:text-[5px] md:text-[6px] lg:text-[7px]"
+          }`}
+        >
+          {WORDMARK}
         </pre>
       </div>
     </div>
