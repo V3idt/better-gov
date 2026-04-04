@@ -205,7 +205,7 @@ const Audits = () => {
                       {proposition.aiGenerated ? (
                         <Badge
                           variant="outline"
-                          className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]"
+                          className="border-blue-500/40 bg-blue-500/10 font-mono uppercase tracking-[0.16em] text-blue-400 shadow-[0_0_0_1px_rgba(59,130,246,0.16)]"
                         >
                           AI
                         </Badge>

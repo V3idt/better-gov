@@ -389,7 +389,10 @@ const SkillDetail = () => {
                 <div className="mb-4 flex flex-wrap items-center gap-2">
                   <h1 className="break-words text-3xl font-semibold text-foreground">{proposition.title}</h1>
                   {proposition.aiGenerated ? (
-                    <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
+                    <Badge
+                      variant="outline"
+                      className="border-blue-500/40 bg-blue-500/10 font-mono uppercase tracking-[0.16em] text-blue-400 shadow-[0_0_0_1px_rgba(59,130,246,0.16)]"
+                    >
                       AI
                     </Badge>
                   ) : null}
@@ -493,7 +496,10 @@ const SkillDetail = () => {
                 {proposition.aiGenerated && proposition.aiOrigin ? (
                   <div className="mb-6 rounded-lg border border-border bg-secondary/20 p-5">
                     <div className="mb-3 flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
+                      <Badge
+                        variant="outline"
+                        className="border-blue-500/40 bg-blue-500/10 font-mono uppercase tracking-[0.16em] text-blue-400 shadow-[0_0_0_1px_rgba(59,130,246,0.16)]"
+                      >
                         AI policy
                       </Badge>
                       <span className="text-xs uppercase tracking-wider text-muted-foreground">Created from a supported policy</span>

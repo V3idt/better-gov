@@ -15,6 +15,10 @@ import { formatSupportPercent } from "@/lib/voting";
 type Tab = "all" | "for_you" | "closing" | "newest";
 type SortMode = "published" | "support-asc" | "support-desc";
 const FEATURED_PROPOSITION_SLUG = "residence-hall-rent-cap";
+const aiBadgeClassName =
+  "border-blue-500/40 bg-blue-500/10 text-blue-400 shadow-[0_0_0_1px_rgba(59,130,246,0.16)]";
+const trendingBadgeClassName =
+  "border-amber-500/40 bg-amber-500/10 text-amber-400 shadow-[0_0_0_1px_rgba(245,158,11,0.16)]";
 
 const LeaderboardTable = () => {
   const [activeTab, setActiveTab] = useState<Tab>("all");
@@ -50,6 +54,24 @@ const LeaderboardTable = () => {
       return matchesTab && matchesSearch;
     });
   }, [activeTab, propositions, search]);
+
+  const mostVotedPropositionId = useMemo(() => {
+    if (!filtered.length) {
+      return null;
+    }
+
+    return [...filtered].sort((left, right) => {
+      if (right.turnoutCount !== left.turnoutCount) {
+        return right.turnoutCount - left.turnoutCount;
+      }
+
+      if (right.supportPercent !== left.supportPercent) {
+        return (right.supportPercent ?? -1) - (left.supportPercent ?? -1);
+      }
+
+      return right.postedAt.localeCompare(left.postedAt);
+    })[0]?.id ?? null;
+  }, [filtered]);
 
   const sorted = useMemo(() => {
     if (activeTab === "for_you") {
@@ -245,9 +267,17 @@ const LeaderboardTable = () => {
                     {item.aiGenerated ? (
                       <Badge
                         variant="outline"
-                        className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]"
+                        className={`font-mono uppercase tracking-[0.16em] ${aiBadgeClassName}`}
                       >
                         AI
+                      </Badge>
+                    ) : null}
+                    {item.id === mostVotedPropositionId ? (
+                      <Badge
+                        variant="outline"
+                        className={`font-mono uppercase tracking-[0.16em] ${trendingBadgeClassName}`}
+                      >
+                        Trending
                       </Badge>
                     ) : null}
                   </div>
