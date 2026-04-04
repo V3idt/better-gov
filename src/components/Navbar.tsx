@@ -12,6 +12,7 @@ const Navbar = () => {
       </Link>
       <div className="flex items-center gap-6 text-sm">
         <Link to="/audits" className="text-muted-foreground hover:text-foreground transition-colors">History</Link>
+        <Link to="/ai-builder" className="text-muted-foreground hover:text-foreground transition-colors">AI Builder</Link>
         <Link to="/docs" className="text-muted-foreground hover:text-foreground transition-colors">How It Works</Link>
         <NavbarAccount />
       </div>

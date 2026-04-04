@@ -7,6 +7,7 @@ import PropositionComposer from "@/components/PropositionComposer";
 import Index from "./pages/Index.tsx";
 import Docs from "./pages/Docs.tsx";
 import Audits from "./pages/Audits.tsx";
+import AiBuilder from "./pages/AiBuilder.tsx";
 import SkillDetail from "./pages/SkillDetail.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
@@ -23,6 +24,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/docs" element={<Docs />} />
             <Route path="/audits" element={<Audits />} />
+            <Route path="/ai-builder" element={<AiBuilder />} />
             <Route path="/*" element={<SkillDetail />} />
           </Routes>
           <PropositionComposer />
