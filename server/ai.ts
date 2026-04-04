@@ -335,6 +335,15 @@ const buildAiPolicyBrief = (draft: DraftPayload, detail: PropositionDetail) =>
     `This policy was generated to build on support for ${detail.title} while keeping the benefits focused on the people who backed the original proposal.`,
   ].join("\n");
 
+const normalizeDraftField = (value: string, fallback: string, maxLength: number) => {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > maxLength) {
+    return fallback.trim().slice(0, maxLength);
+  }
+
+  return trimmed;
+};
+
 const extractJsonText = (raw: string) => {
   const trimmed = raw.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
@@ -1141,22 +1150,31 @@ export const getPolicyDraft = async ({
     }
 
     try {
+      const draft = {
+        title: normalizeDraftField(parsed.title, detail.title, 120),
+        category: normalizeDraftField(parsed.category, detail.category, 48),
+        scope: normalizeDraftField(parsed.scope, detail.scope, 80),
+        tldr: normalizeDraftField(parsed.tldr, detail.tldr, 280),
+        bullets: parsed.bullets.map((bullet) => bullet.trim()).filter(Boolean),
+        rationale: parsed.rationale.trim(),
+      };
+
       const created = createProposition(
         db,
         sessionId,
         {
-          title: parsed.title,
-          category: parsed.category,
-          scope: parsed.scope,
-          tldr: parsed.tldr,
-          bullets: parsed.bullets,
-          brief: buildAiPolicyBrief(parsed, detail),
+          title: draft.title,
+          category: draft.category,
+          scope: draft.scope,
+          tldr: draft.tldr,
+          bullets: draft.bullets,
+          brief: buildAiPolicyBrief(draft, detail),
           closesAt: new Date(Date.now() + DRAFT_CLOSE_OFFSET_MS).toISOString(),
         },
         clientIpAddress,
       );
 
-      markPropositionAiGenerated(db, created.proposition.id, detail.id, parsed.rationale);
+      markPropositionAiGenerated(db, created.proposition.id, detail.id, draft.rationale);
       const createdWithMetadata = getPropositionDetailById(db, sessionId, created.proposition.id);
 
       const payload = buildDraftResponse(
@@ -1167,7 +1185,7 @@ export const getPolicyDraft = async ({
           sourceTurnoutCount: detail.turnoutCount,
           requestedProvider,
           providerUsed: provider,
-          rationale: parsed.rationale,
+          rationale: draft.rationale,
           proposition: createdWithMetadata.proposition,
         },
         provider,

@@ -343,6 +343,55 @@ describe("policy AI explainer", () => {
     expect(fetchCount).toBe(1);
   });
 
+  it("falls back to the source category and scope when Gemini returns oversized draft fields", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("rahel.bekele"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("rahel.bekele"), codeDelivery.devCode ?? "");
+
+    process.env.BETTER_GOV_GEMINI_API_KEY = "gemini-test-key";
+
+    const result = await getPolicyDraft({
+      db,
+      sessionId: verified.session.id,
+      propositionId: "academic-senate:mandatory-attendance-policy",
+      providerPreference: "gemini",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      text: JSON.stringify({
+                        title: "Residence Hall Quiet Hours Upgrade",
+                        category: "C".repeat(120),
+                        scope: "S".repeat(180),
+                        tldr: "Create quieter evening study hours and clearer guest expectations in residence halls.",
+                        bullets: [
+                          "Sets a consistent quiet-hours window for all residence halls.",
+                          "Adds a simple guest guidance rule for evenings.",
+                          "Creates an appeal path for exceptional circumstances.",
+                        ],
+                        rationale: "It extends the housing policy in a way that improves everyday life for the same people who supported stronger housing standards.",
+                      }),
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    });
+
+    expect(result.proposition.status).toBe("open");
+    expect(result.proposition.category).toBe("Academic policy");
+    expect(result.proposition.scope).toBe(
+      "Would have standardized minimum in-person attendance rules across large undergraduate courses.".slice(0, 80),
+    );
+    expect(result.proposition.aiGenerated).toBe(true);
+  });
+
   it("sends the Gemini API key in the request and defaults to gemini-2.5-flash", async () => {
     const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("rahel.bekele"));
     const verified = verifySignInCode(db, emailAtConfiguredDomain("rahel.bekele"), codeDelivery.devCode ?? "");
