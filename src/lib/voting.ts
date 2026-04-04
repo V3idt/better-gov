@@ -73,12 +73,22 @@ export type PropositionSummary = {
   aiGenerated: boolean;
 };
 
+export type PropositionAiSourceSummary = {
+  propositionId: string;
+  title: string;
+  path: string;
+  supportPercent: number | null;
+  turnoutCount: number;
+};
+
 export type PropositionAiOrigin = {
   sourcePropositionId: string;
   sourcePropositionTitle: string;
   sourcePropositionPath: string;
   sourceSupportPercent: number | null;
   sourceTurnoutCount: number;
+  sourcePropositionIds: string[];
+  sourcePropositions: PropositionAiSourceSummary[];
   rationale: string;
 };
 
@@ -169,11 +179,15 @@ export type PropositionAiChatResponse = {
 
 export type PropositionAiDraftRequest = {
   provider?: AiProviderPreference;
+  sourcePropositionIds?: string[];
 };
 
 export type PropositionAiDraftResponse = {
   sourcePropositionId: string;
   sourcePropositionTitle: string;
+  sourcePropositionIds: string[];
+  sourcePropositionTitles: string[];
+  sourcePropositions: PropositionAiSourceSummary[];
   sourceSupportPercent: number | null;
   sourceTurnoutCount: number;
   requestedProvider: AiProviderPreference;
@@ -237,6 +251,30 @@ export class VotingApiError extends Error {
     this.code = code;
   }
 }
+
+const sortPropositionByPolicyImpact = (left: PropositionHistoryItem, right: PropositionHistoryItem) => {
+  const leftSupport = left.supportPercent ?? -1;
+  const rightSupport = right.supportPercent ?? -1;
+
+  if (rightSupport !== leftSupport) {
+    return rightSupport - leftSupport;
+  }
+
+  if (right.turnoutCount !== left.turnoutCount) {
+    return right.turnoutCount - left.turnoutCount;
+  }
+
+  const leftPostedAt = Date.parse(left.postedAt);
+  const rightPostedAt = Date.parse(right.postedAt);
+  if (rightPostedAt !== leftPostedAt) {
+    return rightPostedAt - leftPostedAt;
+  }
+
+  return left.title.localeCompare(right.title);
+};
+
+export const selectAiDraftSourcePropositions = (propositions: PropositionHistoryItem[], maxSources = 3) =>
+  [...propositions].filter((proposition) => proposition.status === "closed").sort(sortPropositionByPolicyImpact).slice(0, maxSources);
 
 export const isApiUnavailableError = (error: unknown) =>
   error instanceof VotingApiError && error.code === "api_unavailable";

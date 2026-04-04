@@ -318,16 +318,26 @@ describe("policy AI explainer", () => {
     const first = await getPolicyDraft({
       db,
       sessionId: verified.session.id,
-      propositionId: "academic-senate:mandatory-attendance-policy",
+      propositionId: "academic-calendar:spring-reading-week",
       providerPreference: "gemini",
+      sourcePropositionIds: [
+        "academic-calendar:spring-reading-week",
+        "finance-office:late-tuition-fee-relief",
+        "academic-senate:mandatory-attendance-policy",
+      ],
       fetchImpl,
     });
 
     const second = await getPolicyDraft({
       db,
       sessionId: verified.session.id,
-      propositionId: "academic-senate:mandatory-attendance-policy",
+      propositionId: "academic-calendar:spring-reading-week",
       providerPreference: "gemini",
+      sourcePropositionIds: [
+        "academic-calendar:spring-reading-week",
+        "finance-office:late-tuition-fee-relief",
+        "academic-senate:mandatory-attendance-policy",
+      ],
       fetchImpl,
     });
 
@@ -336,7 +346,13 @@ describe("policy AI explainer", () => {
     expect(first.providerUsed).toBe("gemini");
     expect(first.proposition.status).toBe("open");
     expect(first.proposition.aiGenerated).toBe(true);
-    expect(first.proposition.aiOrigin?.sourcePropositionId).toBe("academic-senate:mandatory-attendance-policy");
+    expect(first.sourcePropositionIds).toEqual([
+      "academic-calendar:spring-reading-week",
+      "finance-office:late-tuition-fee-relief",
+      "academic-senate:mandatory-attendance-policy",
+    ]);
+    expect(first.proposition.aiOrigin?.sourcePropositionIds).toEqual(first.sourcePropositionIds);
+    expect(first.proposition.aiOrigin?.sourcePropositions).toHaveLength(3);
     expect(first.proposition.brief).toContain("Why this policy was created");
     expect(first.proposition.title).toBe("Residence Hall Quiet Hours Upgrade");
     expect(second.proposition.id).toBe(first.proposition.id);
@@ -354,6 +370,10 @@ describe("policy AI explainer", () => {
       sessionId: verified.session.id,
       propositionId: "academic-senate:mandatory-attendance-policy",
       providerPreference: "gemini",
+      sourcePropositionIds: [
+        "academic-senate:mandatory-attendance-policy",
+        "academic-calendar:spring-reading-week",
+      ],
       fetchImpl: async () =>
         new Response(
           JSON.stringify({

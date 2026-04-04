@@ -540,15 +540,24 @@ const SkillDetail = () => {
                       >
                         AI policy
                       </Badge>
-                      <span className="text-xs uppercase tracking-wider text-muted-foreground">Created from a supported policy</span>
+                      <span className="text-xs uppercase tracking-wider text-muted-foreground">
+                        Created from {proposition.aiOrigin.sourcePropositions.length} supported policies
+                      </span>
                     </div>
                     <p className="mb-2 text-sm text-muted-foreground">
-                      Based on{" "}
-                      <Link to={proposition.aiOrigin.sourcePropositionPath} className="text-foreground underline underline-offset-4 hover:text-muted-foreground">
-                        {proposition.aiOrigin.sourcePropositionTitle}
-                      </Link>{" "}
-                      and posted as a new open proposition for voting.
+                      Based on the following supported policies and posted as a new open proposition for voting.
                     </p>
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {proposition.aiOrigin.sourcePropositions.map((source) => (
+                        <Link
+                          key={source.propositionId}
+                          to={source.path}
+                          className="rounded border border-border bg-background/60 px-2.5 py-1 text-xs font-mono uppercase tracking-[0.12em] text-foreground underline-offset-4 hover:underline hover:text-muted-foreground"
+                        >
+                          {source.title}
+                        </Link>
+                      ))}
+                    </div>
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{proposition.aiOrigin.rationale}</p>
                   </div>
                 ) : null}

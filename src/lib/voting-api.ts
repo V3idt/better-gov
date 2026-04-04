@@ -126,6 +126,7 @@ export const createPropositionAiDraft = (
     method: "POST",
     body: JSON.stringify({
       ...(input.provider ? { provider: input.provider } : {}),
+      ...(input.sourcePropositionIds ? { sourcePropositionIds: input.sourcePropositionIds } : {}),
     }),
   });
 

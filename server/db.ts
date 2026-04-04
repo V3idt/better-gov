@@ -121,6 +121,7 @@ type PropositionRow = {
   source_path: string;
   ai_generated: number;
   ai_source_policy_id: string | null;
+  ai_source_policy_ids: string | null;
   ai_rationale: string | null;
   created_at: string;
   updated_at: string;
@@ -402,11 +403,12 @@ const policySql = `
     source_path,
     ai_generated,
     ai_source_policy_id,
+    ai_source_policy_ids,
     ai_rationale,
     created_at,
     updated_at
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET
     slug = excluded.slug,
     jurisdiction_slug = excluded.jurisdiction_slug,
@@ -416,6 +418,7 @@ const policySql = `
     source_path = excluded.source_path,
     ai_generated = excluded.ai_generated,
     ai_source_policy_id = excluded.ai_source_policy_id,
+    ai_source_policy_ids = excluded.ai_source_policy_ids,
     ai_rationale = excluded.ai_rationale,
     updated_at = excluded.updated_at
 `;
@@ -423,7 +426,7 @@ const policySql = `
 export const markPropositionAiGenerated = (
   db: Database,
   propositionId: string,
-  sourcePropositionId: string,
+  sourcePropositionIds: string[],
   rationale: string,
 ) => {
   const timestamp = now();
@@ -432,11 +435,12 @@ export const markPropositionAiGenerated = (
       UPDATE policies
       SET ai_generated = 1,
           ai_source_policy_id = ?,
+          ai_source_policy_ids = ?,
           ai_rationale = ?,
           updated_at = ?
       WHERE id = ?
     `,
-  ).run(sourcePropositionId, normalizeText(rationale), timestamp, propositionId);
+  ).run(sourcePropositionIds[0] ?? null, JSON.stringify(sourcePropositionIds), normalizeText(rationale), timestamp, propositionId);
 };
 
 const propositionDetailSql = `
@@ -629,6 +633,7 @@ const propositionSelect = `
     p.source_path,
     p.ai_generated,
     p.ai_source_policy_id,
+    p.ai_source_policy_ids,
     p.ai_rationale,
     p.created_at,
     p.updated_at,
@@ -1286,30 +1291,73 @@ const toPropositionSummary = (
   aiGenerated: row.ai_generated === 1,
 });
 
+const loadAiOriginSources = (db: Database, row: PropositionRow) => {
+  const sourceIds = (() => {
+    if (row.ai_source_policy_ids) {
+      try {
+        const parsed = JSON.parse(row.ai_source_policy_ids);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((value): value is string => typeof value === "string" && value.length > 0);
+        }
+      } catch {
+        return [];
+      }
+    }
+
+    return row.ai_source_policy_id ? [row.ai_source_policy_id] : [];
+  })();
+
+  const sources = sourceIds
+    .map((sourceId) => {
+      const sourceRow = loadPropositionById(db, sourceId);
+      if (!sourceRow) {
+        return null;
+      }
+
+      const sourceCounts = loadVoteCounts(db, sourceRow.id);
+      return {
+        propositionId: sourceRow.id,
+        title: sourceRow.title,
+        path: sourceRow.source_path,
+        supportPercent: supportPercentForCounts(sourceCounts),
+        turnoutCount: sourceCounts.total,
+      };
+    })
+    .filter(
+      (
+        source,
+      ): source is {
+        propositionId: string;
+        title: string;
+        path: string;
+        supportPercent: number | null;
+        turnoutCount: number;
+      } => source !== null,
+    );
+
+  return sources.length > 0 ? sources : null;
+};
+
 const toPropositionDetail = (
   db: Database,
   row: PropositionRow,
   counts: VoteCounts,
   myVote: VoteRecord | null,
 ): PropositionDetail => {
+  const aiOriginSources = row.ai_generated === 1 && row.ai_rationale ? loadAiOriginSources(db, row) : null;
+  const primarySource = aiOriginSources?.[0] ?? null;
   const aiOrigin =
-    row.ai_generated === 1 && row.ai_source_policy_id && row.ai_rationale
-      ? (() => {
-          const sourceRow = loadPropositionById(db, row.ai_source_policy_id);
-          if (!sourceRow) {
-            return null;
-          }
-
-          const sourceCounts = loadVoteCounts(db, sourceRow.id);
-          return {
-            sourcePropositionId: sourceRow.id,
-            sourcePropositionTitle: sourceRow.title,
-            sourcePropositionPath: sourceRow.source_path,
-            sourceSupportPercent: supportPercentForCounts(sourceCounts),
-            sourceTurnoutCount: sourceCounts.total,
-            rationale: row.ai_rationale,
-          };
-        })()
+    primarySource && aiOriginSources
+      ? {
+          sourcePropositionId: primarySource.propositionId,
+          sourcePropositionTitle: primarySource.title,
+          sourcePropositionPath: primarySource.path,
+          sourceSupportPercent: primarySource.supportPercent,
+          sourceTurnoutCount: primarySource.turnoutCount,
+          sourcePropositionIds: aiOriginSources.map((source) => source.propositionId),
+          sourcePropositions: aiOriginSources,
+          rationale: row.ai_rationale,
+        }
       : null;
 
   return {
@@ -1338,6 +1386,7 @@ const seedPropositions = (db: Database) => {
       proposition.closesAt,
       proposition.path,
       0,
+      null,
       null,
       null,
       timestamp,
@@ -1470,6 +1519,10 @@ const initializeDatabase = (db: Database) => {
 
   if (!policyColumns.has("ai_source_policy_id")) {
     db.exec(`ALTER TABLE policies ADD COLUMN ai_source_policy_id TEXT;`);
+  }
+
+  if (!policyColumns.has("ai_source_policy_ids")) {
+    db.exec(`ALTER TABLE policies ADD COLUMN ai_source_policy_ids TEXT;`);
   }
 
   if (!policyColumns.has("ai_rationale")) {
@@ -1919,6 +1972,7 @@ export const createProposition = (
       validated.closesAt,
       path,
       0,
+      null,
       null,
       null,
       timestamp,

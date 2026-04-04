@@ -16,7 +16,14 @@ import {
   propositionListQueryKey,
   sessionQueryKey,
 } from "@/lib/voting-api";
-import { formatSupportPercent, formatTurnout, type AiProviderPreference, type PropositionOutcome, VotingApiError } from "@/lib/voting";
+import {
+  formatSupportPercent,
+  formatTurnout,
+  selectAiDraftSourcePropositions,
+  type AiProviderPreference,
+  type PropositionOutcome,
+  VotingApiError,
+} from "@/lib/voting";
 
 const outcomeClass = (outcome: PropositionOutcome) => {
   if (outcome === "APPROVED") return "text-green-500 bg-green-500/10";
@@ -41,43 +48,28 @@ const Audits = () => {
   });
 
   const propositions = historyQuery.data?.propositions ?? [];
-  const topSupportedProposition = useMemo(() => {
-    if (!propositions.length) {
-      return null;
-    }
-
-    return [...propositions].sort((left, right) => {
-      const leftSupport = left.supportPercent ?? -1;
-      const rightSupport = right.supportPercent ?? -1;
-
-      if (rightSupport !== leftSupport) {
-        return rightSupport - leftSupport;
-      }
-
-      if (right.turnoutCount !== left.turnoutCount) {
-        return right.turnoutCount - left.turnoutCount;
-      }
-
-      return Date.parse(right.closesAt) - Date.parse(left.closesAt);
-    })[0] ?? null;
-  }, [propositions]);
+  const draftSourcePropositions = useMemo(() => selectAiDraftSourcePropositions(propositions, 3), [propositions]);
+  const draftSourceIds = draftSourcePropositions.map((proposition) => proposition.id);
+  const hasEnoughSourcePropositions = draftSourcePropositions.length >= 2;
+  const draftSourceTitles = draftSourcePropositions.map((proposition) => proposition.title);
 
   const isAuthenticated = sessionQuery.data?.authenticated === true;
 
   const draftMutation = useMutation({
     mutationFn: () => {
-      if (!topSupportedProposition) {
-        throw new Error("No closed proposition is available for drafting.");
+      if (!hasEnoughSourcePropositions) {
+        throw new Error("Need at least two closed propositions to synthesize a new policy.");
       }
 
-      return createPropositionAiDraft(topSupportedProposition.id, {
+      return createPropositionAiDraft(draftSourcePropositions[0].id, {
         provider: draftProvider,
+        sourcePropositionIds: draftSourceIds,
       });
     },
     onSuccess: async (payload) => {
       await queryClient.invalidateQueries({ queryKey: propositionListQueryKey });
       await queryClient.invalidateQueries({ queryKey: propositionHistoryQueryKey });
-      toast.success(`Policy created from ${payload.sourcePropositionTitle}.`);
+      toast.success(`Policy created from ${payload.sourcePropositionTitles.join(", ")}.`);
       navigate(payload.proposition.path);
     },
   });
@@ -103,7 +95,7 @@ const Audits = () => {
               <div className="space-y-1">
                 <CardTitle className="text-sm uppercase tracking-[0.16em]">AI policy builder</CardTitle>
                 <CardDescription className="max-w-2xl leading-relaxed">
-                  Start from the most-supported closed policy and auto-create a follow-up open policy for the people who supported it.
+                  Start from the strongest closed policies and synthesize a follow-up open policy for the people who supported them.
                 </CardDescription>
               </div>
               <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
@@ -112,22 +104,33 @@ const Audits = () => {
             </div>
           </CardHeader>
           <CardContent className="space-y-4 p-5">
-            {topSupportedProposition ? (
+            {draftSourcePropositions.length > 0 ? (
               <>
                 <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
                   <div className="space-y-3 rounded border border-border bg-background/60 p-4">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Source policy</p>
-                    <p className="break-words text-lg font-semibold text-foreground">{topSupportedProposition.title}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {topSupportedProposition.category} / {topSupportedProposition.jurisdiction}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.14em]">
-                        {formatSupportPercent(topSupportedProposition.supportPercent)}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Source policies</p>
+                      <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.14em] text-muted-foreground">
+                        {draftSourcePropositions.length} selected
                       </Badge>
-                      <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.14em]">
-                        {formatTurnout(topSupportedProposition.turnoutCount)}
-                      </Badge>
+                    </div>
+                    <div className="space-y-3">
+                      {draftSourcePropositions.map((source, index) => (
+                        <div key={source.id} className={index > 0 ? "border-t border-border/60 pt-3" : ""}>
+                          <p className="break-words text-lg font-semibold text-foreground">{source.title}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {source.category} / {source.jurisdiction}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.14em]">
+                              {formatSupportPercent(source.supportPercent)}
+                            </Badge>
+                            <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.14em]">
+                              {formatTurnout(source.turnoutCount)}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
@@ -144,10 +147,10 @@ const Audits = () => {
                       <SelectItem value="grok">Grok</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button
+                    <Button
                       type="button"
                       className="w-full bg-foreground text-background hover:bg-foreground/90"
-                      disabled={draftMutation.isPending}
+                      disabled={draftMutation.isPending || !hasEnoughSourcePropositions}
                       onClick={() => {
                         if (!isAuthenticated) {
                           setAccountDialogOpen(true);
@@ -159,6 +162,15 @@ const Audits = () => {
                     >
                       {draftMutation.isPending ? "Creating..." : "Generate policy"}
                     </Button>
+                    {!hasEnoughSourcePropositions ? (
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        Need at least two closed propositions before the builder can synthesize a new open policy.
+                      </p>
+                    ) : (
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        Synthesizing from {draftSourceIds.length} closed propositions: {draftSourceTitles.join(", ")}.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -170,7 +182,7 @@ const Audits = () => {
               </>
             ) : (
               <div className="rounded border border-border bg-background/60 p-4 text-sm text-muted-foreground">
-                No closed proposition is available yet for policy generation.
+                No closed propositions are available yet for policy generation.
               </div>
             )}
           </CardContent>

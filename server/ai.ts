@@ -4,6 +4,7 @@ import {
   getCachedAiChatAnswer,
   getCachedAiPolicyDraft,
   getPropositionDetailById,
+  listPropositionHistory,
   getResolvedSession,
   markPropositionAiGenerated,
   storeAiPolicyDraft,
@@ -21,11 +22,12 @@ import type {
   PropositionAiDraftResponse,
   PropositionAiExplanation,
   PropositionDetail,
+  selectAiDraftSourcePropositions,
 } from "../src/lib/voting.ts";
 import { z } from "zod";
 
 const PROMPT_VERSION = "2026-04-04-v1";
-const DRAFT_PROMPT_VERSION = "2026-04-04-draft-v1";
+const DRAFT_PROMPT_VERSION = "2026-04-04-draft-v2";
 const DEFAULT_PROVIDER_ORDER: Exclude<AiProviderPreference, "auto">[] = ["gemini", "openai", "grok"];
 const DRAFT_CLOSE_OFFSET_MS = 60 * 24 * 60 * 60 * 1000;
 
@@ -221,6 +223,34 @@ const hashPropositionContext = (detail: PropositionDetail) =>
     )
     .digest("hex");
 
+const hashPropositionSetContext = (details: PropositionDetail[]) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(
+        details.map((detail) => ({
+          id: detail.id,
+          slug: detail.slug,
+          jurisdictionSlug: detail.jurisdictionSlug,
+          path: detail.path,
+          jurisdiction: detail.jurisdiction,
+          category: detail.category,
+          title: detail.title,
+          status: detail.status,
+          closesAt: detail.closesAt,
+          postedAt: detail.postedAt,
+          sponsor: detail.sponsor,
+          supportPercent: detail.supportPercent,
+          turnoutCount: detail.turnoutCount,
+          scope: detail.scope,
+          tldr: detail.tldr,
+          bullets: detail.bullets,
+          reviewChecks: detail.reviewChecks,
+          brief: detail.brief,
+        })),
+      ),
+    )
+    .digest("hex");
+
 const hashChatQuestion = (question: string) =>
   createHash("sha256")
     .update(question.trim().toLowerCase().replace(/\s+/g, " "))
@@ -291,11 +321,23 @@ const buildChatPrompt = (detail: PropositionDetail, role: AiAudienceRole, questi
   ].join("\n");
 };
 
-const buildDraftPrompt = (detail: PropositionDetail) =>
+const formatSourcePolicyBlock = (detail: PropositionDetail, index: number) =>
+  [
+    `${index + 1}. ${detail.title}`,
+    `   Path: ${detail.path}`,
+    `   Support: ${detail.supportPercent === null ? "unknown" : `${detail.supportPercent.toFixed(1)}%`} from ${detail.turnoutCount.toLocaleString()} votes`,
+    `   Category: ${detail.category}`,
+    `   Scope: ${detail.scope}`,
+    `   TL;DR: ${detail.tldr}`,
+    `   Quick read: ${detail.reviewChecks.map((check) => `${check.name}=${check.status}`).join(", ")}`,
+    `   Bullets: ${detail.bullets.map((bullet) => `- ${bullet}`).join(" | ")}`,
+  ].join("\n");
+
+const buildDraftPrompt = (details: PropositionDetail[]) =>
   [
     "You are helping a university governance team design a follow-up open policy.",
-    "Create a new policy that strengthens, extends, or complements the source policy.",
-    "Assume the draft should appeal to the people who supported the source policy and benefit them directly.",
+    "Create one new policy that strengthens, extends, or complements the shared direction across the source policies.",
+    "Assume the draft should appeal to the people who supported these policies and benefit them directly.",
     "Use only the policy information provided below.",
     "Stay balanced and factual.",
     "Do not copy the source policy wording.",
@@ -304,18 +346,11 @@ const buildDraftPrompt = (detail: PropositionDetail) =>
     "bullets must be short practical points.",
     "Keep the draft specific enough that it could be posted immediately.",
     "",
-    `Source policy title: ${detail.title}`,
-    `Source policy path: ${detail.path}`,
-    `Support: ${detail.supportPercent === null ? "unknown" : `${detail.supportPercent.toFixed(1)}%`} from ${detail.turnoutCount.toLocaleString()} votes`,
-    `Jurisdiction: ${detail.jurisdiction}`,
-    `Category: ${detail.category}`,
-    `Scope: ${detail.scope}`,
-    `TL;DR: ${detail.tldr}`,
-    `Quick read: ${detail.reviewChecks.map((check) => `${check.name}=${check.status}`).join(", ")}`,
-    `Bullet points: ${detail.bullets.map((bullet) => `- ${bullet}`).join("\n")}`,
+    `Source policies (${details.length}):`,
+    ...details.map((detail, index) => formatSourcePolicyBlock(detail, index)),
   ].join("\n");
 
-const buildAiPolicyBrief = (draft: DraftPayload, detail: PropositionDetail) =>
+const buildAiPolicyBrief = (draft: DraftPayload, details: PropositionDetail[]) =>
   [
     `# ${draft.title}`,
     "",
@@ -328,11 +363,11 @@ const buildAiPolicyBrief = (draft: DraftPayload, detail: PropositionDetail) =>
     "## Key changes",
     draft.bullets.map((bullet) => `- ${bullet.trim()}`).join("\n"),
     "",
-    "## Source policy",
-    `${detail.title} (${detail.path})`,
+    "## Source policies",
+    ...details.map((detail, index) => `${index + 1}. ${detail.title} (${detail.path})`),
     "",
     "## Tradeoff",
-    `This policy was generated to build on support for ${detail.title} while keeping the benefits focused on the people who backed the original proposal.`,
+    `This policy was generated to build on support for the selected closed policies while keeping the benefits focused on the people who backed them.`,
   ].join("\n");
 
 const normalizeDraftField = (value: string, fallback: string, maxLength: number) => {
@@ -1095,8 +1130,40 @@ type BuildDraftInput = {
   sessionId: string | null;
   propositionId: string;
   providerPreference?: AiProviderPreference;
+  sourcePropositionIds?: string[];
   fetchImpl?: typeof fetch;
   clientIpAddress?: string | null;
+};
+
+const resolveDraftSourceDetails = (
+  db: VotingDatabase,
+  sessionId: string | null,
+  sourcePropositionIds?: string[],
+) => {
+  const normalizedSourceIds = (() => {
+    if (sourcePropositionIds && sourcePropositionIds.length > 0) {
+      return Array.from(new Set(sourcePropositionIds.filter((sourceId) => typeof sourceId === "string" && sourceId.trim()))).map((sourceId) =>
+        sourceId.trim(),
+      );
+    }
+
+    return selectAiDraftSourcePropositions(listPropositionHistory(db).propositions, 3).map((proposition) => proposition.id);
+  })();
+
+  const uniqueSourceIds = Array.from(new Set(normalizedSourceIds)).slice(0, 5);
+  if (uniqueSourceIds.length < 2) {
+    throw new VotingDatabaseError(
+      "invalid_request",
+      "Choose at least two closed policies to synthesize a new open policy.",
+    );
+  }
+
+  const sourceDetails = uniqueSourceIds.map((sourceId) => getPropositionDetailById(db, sessionId, sourceId).proposition);
+  if (sourceDetails.some((detail) => detail.status !== "closed")) {
+    throw new VotingDatabaseError("invalid_request", "Choose closed policies from the history view.");
+  }
+
+  return sourceDetails;
 };
 
 export const getPolicyDraft = async ({
@@ -1104,6 +1171,7 @@ export const getPolicyDraft = async ({
   sessionId,
   propositionId,
   providerPreference,
+  sourcePropositionIds,
   fetchImpl = fetch,
   clientIpAddress = null,
 }: BuildDraftInput): Promise<PropositionAiDraftResponse> => {
@@ -1112,14 +1180,13 @@ export const getPolicyDraft = async ({
     throw new VotingDatabaseError("authentication_required", "Sign in with a university account to generate a policy.");
   }
 
-  const detail = getPropositionDetailById(db, sessionId, propositionId).proposition;
-  if (detail.status !== "closed") {
-    throw new VotingDatabaseError("invalid_request", "Choose a closed policy from the history view.");
-  }
+  const sourceDetails = resolveDraftSourceDetails(db, sessionId, sourcePropositionIds);
+  const primarySource = sourceDetails[0];
 
   const requestedProvider = normalizeProviderPreference(providerPreference);
-  const contentHash = hashPropositionContext(detail);
-  const cached = getCachedAiPolicyDraft(db, propositionId, requestedProvider, contentHash, DRAFT_PROMPT_VERSION);
+  const contentHash = hashPropositionSetContext(sourceDetails);
+  const cacheKey = primarySource.id;
+  const cached = getCachedAiPolicyDraft(db, cacheKey, requestedProvider, contentHash, DRAFT_PROMPT_VERSION);
   if (cached) {
     return {
       ...cached,
@@ -1127,7 +1194,7 @@ export const getPolicyDraft = async ({
     };
   }
 
-  const prompt = buildDraftPrompt(detail);
+  const prompt = buildDraftPrompt(sourceDetails);
   const providers = getProviderCandidates(requestedProvider);
   let rateLimitedError: VotingDatabaseError | null = null;
 
@@ -1151,10 +1218,10 @@ export const getPolicyDraft = async ({
 
     try {
       const draft = {
-        title: normalizeDraftField(parsed.title, detail.title, 120),
-        category: normalizeDraftField(parsed.category, detail.category, 48),
-        scope: normalizeDraftField(parsed.scope, detail.scope, 80),
-        tldr: normalizeDraftField(parsed.tldr, detail.tldr, 280),
+        title: normalizeDraftField(parsed.title, primarySource.title, 120),
+        category: normalizeDraftField(parsed.category, primarySource.category, 48),
+        scope: normalizeDraftField(parsed.scope, primarySource.scope, 80),
+        tldr: normalizeDraftField(parsed.tldr, primarySource.tldr, 280),
         bullets: parsed.bullets.map((bullet) => bullet.trim()).filter(Boolean),
         rationale: parsed.rationale.trim(),
       };
@@ -1168,21 +1235,30 @@ export const getPolicyDraft = async ({
           scope: draft.scope,
           tldr: draft.tldr,
           bullets: draft.bullets,
-          brief: buildAiPolicyBrief(draft, detail),
+          brief: buildAiPolicyBrief(draft, sourceDetails),
           closesAt: new Date(Date.now() + DRAFT_CLOSE_OFFSET_MS).toISOString(),
         },
         clientIpAddress,
       );
 
-      markPropositionAiGenerated(db, created.proposition.id, detail.id, draft.rationale);
+      markPropositionAiGenerated(db, created.proposition.id, sourceDetails.map((source) => source.id), draft.rationale);
       const createdWithMetadata = getPropositionDetailById(db, sessionId, created.proposition.id);
 
       const payload = buildDraftResponse(
         {
-          sourcePropositionId: detail.id,
-          sourcePropositionTitle: detail.title,
-          sourceSupportPercent: detail.supportPercent,
-          sourceTurnoutCount: detail.turnoutCount,
+          sourcePropositionId: primarySource.id,
+          sourcePropositionTitle: primarySource.title,
+          sourcePropositionIds: sourceDetails.map((source) => source.id),
+          sourcePropositionTitles: sourceDetails.map((source) => source.title),
+          sourcePropositions: sourceDetails.map((source) => ({
+            propositionId: source.id,
+            title: source.title,
+            path: source.path,
+            supportPercent: source.supportPercent,
+            turnoutCount: source.turnoutCount,
+          })),
+          sourceSupportPercent: primarySource.supportPercent,
+          sourceTurnoutCount: primarySource.turnoutCount,
           requestedProvider,
           providerUsed: provider,
           rationale: draft.rationale,

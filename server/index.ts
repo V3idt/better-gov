@@ -255,12 +255,21 @@ const server = Bun.serve({
           throw new VotingDatabaseError("invalid_request", "Choose a valid AI provider.");
         }
 
+        if (
+          body.sourcePropositionIds !== undefined &&
+          (!Array.isArray(body.sourcePropositionIds) ||
+            body.sourcePropositionIds.some((sourceId) => typeof sourceId !== "string" || !sourceId.trim()))
+        ) {
+          throw new VotingDatabaseError("invalid_request", "Choose at least two closed policies to synthesize a new open policy.");
+        }
+
         return json(
           await getPolicyDraft({
             db,
             sessionId: readSessionCookie(request),
             propositionId: decodeURIComponent(propositionDraftMatch[1]),
             providerPreference: body.provider,
+            sourcePropositionIds: body.sourcePropositionIds,
             clientIpAddress: readClientAddress(request),
           }),
         );
