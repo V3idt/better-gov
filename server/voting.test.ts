@@ -44,7 +44,7 @@ afterEach(() => {
 
 describe("voting database", () => {
   it("returns open propositions from the backend instead of the static frontend list", () => {
-    const list = listPropositions(db);
+    const list = listPropositions(db, null);
 
     expect(list.propositions.length).toBeGreaterThan(0);
     expect(list.propositions.some((item) => item.status === "closed")).toBe(false);
@@ -102,7 +102,7 @@ describe("voting database", () => {
     const verified = verifySignInCode(db, emailAtConfiguredDomain("leila.mekonnen"), codeDelivery.devCode ?? "");
 
     const created = createProposition(db, verified.session.id, propositionInput("Keep The Student Center Open Later"), "127.0.0.1");
-    const propositions = listPropositions(db);
+    const propositions = listPropositions(db, verified.session.id);
 
     expect(created.proposition.title).toBe("Keep The Student Center Open Later");
     expect(created.proposition.status).toBe("open");
@@ -138,5 +138,19 @@ describe("voting database", () => {
     await requestSignInCode(db, emailAtConfiguredDomain("hana.tadesse"));
 
     expect(() => verifySignInCode(db, emailAtConfiguredDomain("hana.tadesse"), "000000")).toThrow(VotingDatabaseError);
+  });
+
+  it("returns a personalized proposition order and reason for signed-in accounts", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("leila.mekonnen"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("leila.mekonnen"), codeDelivery.devCode ?? "");
+
+    submitVote(db, verified.session.id, "academic-senate:lecture-recording-default", "approve");
+
+    const defaultList = listPropositions(db, verified.session.id, "default");
+    const personalizedList = listPropositions(db, verified.session.id, "for_you");
+
+    expect(defaultList.propositions[0]?.id).not.toBe(personalizedList.propositions[0]?.id);
+    expect(personalizedList.propositions[0]?.id).toBe("academic-senate:lecture-recording-default");
+    expect(personalizedList.propositions[0]?.personalizationReason).toBeTruthy();
   });
 });

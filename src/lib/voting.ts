@@ -2,6 +2,7 @@ export type VoteChoice = "approve" | "reject" | "abstain";
 export type ReviewStatus = "PASS" | "WARN" | "FAIL";
 export type PropositionStatus = "open" | "closing_soon" | "draft" | "closed";
 export type PropositionOutcome = "APPROVED" | "REJECTED" | "TIED" | "NO_RESULT";
+export type PropositionListMode = "default" | "for_you";
 export type AiAudienceRole = "student" | "staff";
 export type AiProviderPreference = "auto" | "openai" | "gemini" | "grok";
 export type AiProviderUsed = "openai" | "gemini" | "grok" | "fallback";
@@ -55,6 +56,7 @@ export type PropositionSummary = {
   sponsor: string;
   supportPercent: number | null;
   turnoutCount: number;
+  personalizationReason: string | null;
 };
 
 export type PropositionDetail = PropositionSummary & {

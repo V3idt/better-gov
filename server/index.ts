@@ -20,6 +20,7 @@ import type {
   PropositionAiDraftRequest,
   PropositionAiExplanationRequest,
   CreatePropositionInput,
+  PropositionListMode,
   RequestSignInCodeInput,
   VerifySignInCodeInput,
   VoteChoice,
@@ -134,7 +135,12 @@ const server = Bun.serve({
       }
 
       if (request.method === "GET" && url.pathname === "/api/propositions") {
-        return json(listPropositions(db));
+        const mode = (url.searchParams.get("mode") ?? "default") as PropositionListMode;
+        if (mode !== "default" && mode !== "for_you") {
+          throw new VotingDatabaseError("invalid_request", "Choose a valid proposition list mode.");
+        }
+
+        return json(listPropositions(db, readSessionCookie(request), mode));
       }
 
       if (request.method === "POST" && url.pathname === "/api/propositions") {

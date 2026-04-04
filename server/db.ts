@@ -16,6 +16,7 @@ import type {
   PropositionDetail,
   PropositionDetailResponse,
   PropositionHistoryItem,
+  PropositionListMode,
   PropositionHistoryResponse,
   PropositionOutcome,
   PropositionReviewCheck,
@@ -209,6 +210,11 @@ type VoteCounts = {
   total: number;
 };
 
+type PersonalizationCandidate = {
+  weight: number;
+  label: string;
+};
+
 export type SessionContext = {
   session: SessionRecord;
   person: Person;
@@ -339,6 +345,18 @@ const toVote = (row: VoteRow): VoteRecord => ({
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
+
+const votePreferenceWeight = (choice: VoteChoice) => {
+  if (choice === "approve") {
+    return 4;
+  }
+
+  if (choice === "abstain") {
+    return 1;
+  }
+
+  return -2;
+};
 
 const personSql = `
   INSERT INTO people (id, display_name, primary_role, created_at, updated_at)
@@ -754,6 +772,34 @@ const loadVote = (db: Database, propositionId: string, personId: string) => {
   return row ? toVote(row) : null;
 };
 
+const loadVotesForPerson = (db: Database, personId: string) =>
+  db
+    .prepare(
+      `
+        SELECT
+          v.policy_id,
+          v.choice,
+          d.category,
+          d.jurisdiction_label,
+          d.scope,
+          p.title,
+          d.tldr
+        FROM votes v
+        INNER JOIN policies p ON p.id = v.policy_id
+        INNER JOIN proposition_details d ON d.policy_id = p.id
+        WHERE v.person_id = ?
+      `,
+    )
+    .all(personId) as Array<{
+      policy_id: string;
+      choice: VoteChoice;
+      category: string;
+      jurisdiction_label: string;
+      scope: string;
+      title: string;
+      tldr: string;
+    }>;
+
 const loadVoteCounts = (db: Database, propositionId: string): VoteCounts => {
   const seededCountsRow = db
     .prepare(
@@ -959,6 +1005,132 @@ const propositionOutcomeForCounts = (counts: VoteCounts): PropositionOutcome => 
 
 const supportPercentForCounts = (counts: VoteCounts) => (counts.total ? (counts.approve / counts.total) * 100 : null);
 
+const rolePersonalizationSignal = (role: Person["primaryRole"], row: PropositionRow) => {
+  const searchableText = `${row.title} ${row.category} ${row.scope} ${row.tldr}`.toLowerCase();
+  const studentKeywords = [
+    "student",
+    "housing",
+    "tuition",
+    "library",
+    "lecture",
+    "exam",
+    "counseling",
+    "shuttle",
+    "food",
+    "dining",
+    "wellbeing",
+  ];
+  const staffKeywords = [
+    "department",
+    "budget",
+    "faculty",
+    "technology",
+    "policy",
+    "administration",
+    "reporting",
+  ];
+
+  if (
+    (role === "student" || role === "dual") &&
+    studentKeywords.some((keyword) => searchableText.includes(keyword))
+  ) {
+    return {
+      weight: 1.5,
+      label: role === "dual" ? "Relevant to your campus priorities" : "Relevant to student priorities",
+    };
+  }
+
+  if (
+    (role === "staff" || role === "dual") &&
+    staffKeywords.some((keyword) => searchableText.includes(keyword))
+  ) {
+    return {
+      weight: 1.5,
+      label: role === "dual" ? "Relevant to your campus priorities" : "Relevant to staff priorities",
+    };
+  }
+
+  return null;
+};
+
+const personalizePropositionSummaries = (
+  db: Database,
+  context: SessionContext,
+  rows: PropositionRow[],
+) => {
+  const voteHistory = loadVotesForPerson(db, context.person.id);
+  const categoryPreferences = new Map<string, number>();
+  const jurisdictionPreferences = new Map<string, number>();
+  const votedPropositionIds = new Set<string>();
+
+  for (const vote of voteHistory) {
+    const weight = votePreferenceWeight(vote.choice);
+    votedPropositionIds.add(vote.policy_id);
+    categoryPreferences.set(vote.category, (categoryPreferences.get(vote.category) ?? 0) + weight);
+    jurisdictionPreferences.set(
+      vote.jurisdiction_label,
+      (jurisdictionPreferences.get(vote.jurisdiction_label) ?? 0) + weight,
+    );
+  }
+
+  return rows
+    .map((row) => {
+      const counts = loadVoteCounts(db, row.id);
+      const reasons: PersonalizationCandidate[] = [];
+      let score = 0;
+      const status = propositionStatusForRow(row);
+
+      const categoryPreference = categoryPreferences.get(row.category) ?? 0;
+      if (categoryPreference > 0) {
+        const weight = categoryPreference * 1.4;
+        score += weight;
+        reasons.push({ weight, label: `You often approve ${row.category.toLowerCase()} propositions` });
+      }
+
+      const jurisdictionPreference = jurisdictionPreferences.get(row.jurisdiction_label) ?? 0;
+      if (jurisdictionPreference > 0) {
+        const weight = jurisdictionPreference * 0.8;
+        score += weight;
+        reasons.push({ weight, label: `You engage with ${row.jurisdiction_label.toLowerCase()} decisions` });
+      }
+
+      const roleSignal = rolePersonalizationSignal(context.person.primaryRole, row);
+      if (roleSignal) {
+        score += roleSignal.weight;
+        reasons.push(roleSignal);
+      }
+
+      if (status === "closing_soon") {
+        score += 2.5;
+        reasons.push({ weight: 2.5, label: "Closes soon" });
+      }
+
+      if (votedPropositionIds.has(row.id)) {
+        score += 0.6;
+        reasons.push({ weight: 0.6, label: "You already weighed in here" });
+      }
+
+      score += Math.max(100 - row.display_order, 0) / 100;
+
+      reasons.sort((left, right) => right.weight - left.weight);
+
+      return {
+        row,
+        counts,
+        score,
+        personalizationReason: reasons[0]?.label ?? "Campus-wide relevance",
+      };
+    })
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      return left.row.display_order - right.row.display_order;
+    })
+    .map(({ row, counts, personalizationReason }) => toPropositionSummary(row, counts, personalizationReason));
+};
+
 const voteBreakdownForCounts = (counts: VoteCounts) => {
   const total = counts.total || 1;
   return [
@@ -983,7 +1155,11 @@ const voteBreakdownForCounts = (counts: VoteCounts) => {
   ];
 };
 
-const toPropositionSummary = (row: PropositionRow, counts: VoteCounts): PropositionSummary => ({
+const toPropositionSummary = (
+  row: PropositionRow,
+  counts: VoteCounts,
+  personalizationReason: string | null = null,
+): PropositionSummary => ({
   id: row.id,
   slug: row.slug,
   jurisdictionSlug: row.jurisdiction_slug,
@@ -997,6 +1173,7 @@ const toPropositionSummary = (row: PropositionRow, counts: VoteCounts): Proposit
   sponsor: row.sponsor,
   supportPercent: supportPercentForCounts(counts),
   turnoutCount: counts.total,
+  personalizationReason,
 });
 
 const toPropositionDetail = (
@@ -1363,12 +1540,21 @@ export const signOut = (db: Database, sessionId: string | null): SignOutResponse
   return { success: true };
 };
 
-export const listPropositions = (db: Database): PropositionListResponse => {
-  const propositions = listPropositionRows(db)
-    .map((row) => ({ row, counts: loadVoteCounts(db, row.id) }))
-    .filter(({ row }) => row.lifecycle_status !== "closed")
-    .map(({ row, counts }) => toPropositionSummary(row, counts));
+export const listPropositions = (
+  db: Database,
+  sessionId: string | null,
+  mode: PropositionListMode = "default",
+): PropositionListResponse => {
+  const rows = listPropositionRows(db).filter((row) => row.lifecycle_status !== "closed");
+  const session = getResolvedSession(db, sessionId);
 
+  if (mode === "for_you" && session) {
+    return {
+      propositions: personalizePropositionSummaries(db, session, rows),
+    };
+  }
+
+  const propositions = rows.map((row) => toPropositionSummary(row, loadVoteCounts(db, row.id)));
   return { propositions };
 };
 

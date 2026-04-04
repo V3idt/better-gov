@@ -9,6 +9,7 @@ import type {
   PropositionAiDraftResponse,
   PropositionAiExplanationResponse,
   PropositionHistoryResponse,
+  PropositionListMode,
   PropositionListResponse,
   RequestSignInCodeInput,
   RequestSignInCodeResponse,
@@ -24,6 +25,7 @@ import { VotingApiError } from "@/lib/voting";
 const API_BASE = "/api";
 export const sessionQueryKey = ["session"] as const;
 export const propositionListQueryKey = ["propositions"] as const;
+export const propositionListModeQueryKey = (mode: PropositionListMode) => ["propositions", mode] as const;
 export const propositionHistoryQueryKey = ["propositions", "history"] as const;
 export const propositionAiQueryKey = (propositionId: string, role: string, provider: string) =>
   ["proposition", propositionId, "ai", role, provider] as const;
@@ -69,7 +71,8 @@ const request = async <T>(path: string, init?: RequestInit) => {
 
 export const getSession = () => request<SessionResponse>("/me", { method: "GET" });
 
-export const listPropositions = () => request<PropositionListResponse>("/propositions", { method: "GET" });
+export const listPropositions = (mode: PropositionListMode = "default") =>
+  request<PropositionListResponse>(`/propositions?mode=${encodeURIComponent(mode)}`, { method: "GET" });
 
 export const listPropositionHistory = () => request<PropositionHistoryResponse>("/propositions/history", { method: "GET" });
 

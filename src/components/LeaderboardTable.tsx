@@ -4,22 +4,30 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
+  getSession,
   listPropositions,
-  propositionListQueryKey,
+  propositionListModeQueryKey,
+  sessionQueryKey,
 } from "@/lib/voting-api";
 import { formatSupportPercent } from "@/lib/voting";
 
-type Tab = "all" | "closing" | "draft";
+type Tab = "all" | "for_you" | "closing" | "draft";
 type SortMode = "published" | "support-asc" | "support-desc";
 
 const LeaderboardTable = () => {
   const [activeTab, setActiveTab] = useState<Tab>("all");
   const [search, setSearch] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("published");
-  const propositionsQuery = useQuery({
-    queryKey: propositionListQueryKey,
-    queryFn: listPropositions,
+  const sessionQuery = useQuery({
+    queryKey: sessionQueryKey,
+    queryFn: getSession,
   });
+  const listMode = activeTab === "for_you" ? "for_you" : "default";
+  const propositionsQuery = useQuery({
+    queryKey: propositionListModeQueryKey(listMode),
+    queryFn: () => listPropositions(listMode),
+  });
+  const isAuthenticated = sessionQuery.data?.authenticated === true;
 
   const propositions = propositionsQuery.data?.propositions ?? [];
   const filtered = useMemo(() => {
@@ -28,6 +36,7 @@ const LeaderboardTable = () => {
     return propositions.filter((item) => {
       const matchesTab =
         (activeTab === "all" && item.status !== "draft") ||
+        (activeTab === "for_you" && item.status !== "draft") ||
         (activeTab === "closing" && item.status === "closing_soon") ||
         (activeTab === "draft" && item.status === "draft");
 
@@ -41,6 +50,10 @@ const LeaderboardTable = () => {
   }, [activeTab, propositions, search]);
 
   const sorted = useMemo(() => {
+    if (activeTab === "for_you") {
+      return filtered;
+    }
+
     return [...filtered].sort((left, right) => {
       if (sortMode === "published") {
         const leftPublished = new Date(left.postedAt).getTime();
@@ -78,7 +91,7 @@ const LeaderboardTable = () => {
 
       return sortMode === "support-asc" ? leftSupport - rightSupport : rightSupport - leftSupport;
     });
-  }, [filtered, sortMode]);
+  }, [activeTab, filtered, sortMode]);
 
   const supportSortLabel = "Support";
   const SupportSortIcon =
@@ -113,6 +126,18 @@ const LeaderboardTable = () => {
         >
           All Open ({propositions.filter((item) => item.status !== "draft").length})
         </button>
+        {isAuthenticated ? (
+          <button
+            onClick={() => setActiveTab("for_you")}
+            className={`pb-1 font-mono transition-colors ${
+              activeTab === "for_you"
+                ? "border-b border-foreground text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            For You
+          </button>
+        ) : null}
         <button
           onClick={() => setActiveTab("closing")}
           className={`pb-1 font-mono transition-colors ${
@@ -137,24 +162,28 @@ const LeaderboardTable = () => {
         <span>#</span>
         <span>Proposition</span>
         <div className="flex justify-end">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              setSortMode((current) =>
-                current === "published"
-                  ? "support-asc"
-                  : current === "support-asc"
-                    ? "support-desc"
-                    : "published",
-              )
-            }
-            className="h-auto px-0 py-0 text-xs uppercase tracking-wider text-muted-foreground hover:bg-transparent hover:text-foreground"
-          >
-            <span>{supportSortLabel}</span>
-            {SupportSortIcon ? <SupportSortIcon className="h-3.5 w-3.5" /> : null}
-          </Button>
+          {activeTab === "for_you" ? (
+            <span className="text-xs uppercase tracking-wider text-muted-foreground">{supportSortLabel}</span>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setSortMode((current) =>
+                  current === "published"
+                    ? "support-asc"
+                    : current === "support-asc"
+                      ? "support-desc"
+                      : "published",
+                )
+              }
+              className="h-auto px-0 py-0 text-xs uppercase tracking-wider text-muted-foreground hover:bg-transparent hover:text-foreground"
+            >
+              <span>{supportSortLabel}</span>
+              {SupportSortIcon ? <SupportSortIcon className="h-3.5 w-3.5" /> : null}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -180,6 +209,9 @@ const LeaderboardTable = () => {
                     {item.jurisdiction} / {item.category} / {item.status.replace("_", " ")}
                   </span>
                 </div>
+                {activeTab === "for_you" && item.personalizationReason ? (
+                  <div className="mt-1 text-xs text-muted-foreground">{item.personalizationReason}</div>
+                ) : null}
               </div>
               <span className="text-right font-mono text-xs text-muted-foreground sm:text-sm">
                 {formatSupportPercent(item.supportPercent)}
