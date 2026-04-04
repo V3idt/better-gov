@@ -10,12 +10,12 @@ import {
 import { formatSupportPercent } from "@/lib/voting";
 
 type Tab = "all" | "closing" | "draft";
-type SupportSortDirection = "desc" | "asc";
+type SortMode = "published" | "support-asc" | "support-desc";
 
 const LeaderboardTable = () => {
   const [activeTab, setActiveTab] = useState<Tab>("all");
   const [search, setSearch] = useState("");
-  const [supportSortDirection, setSupportSortDirection] = useState<SupportSortDirection>("desc");
+  const [sortMode, setSortMode] = useState<SortMode>("published");
   const propositionsQuery = useQuery({
     queryKey: propositionListQueryKey,
     queryFn: listPropositions,
@@ -41,22 +41,49 @@ const LeaderboardTable = () => {
   }, [activeTab, propositions, search]);
 
   const sorted = useMemo(() => {
-    const nullSupportRank = supportSortDirection === "asc" ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
-
     return [...filtered].sort((left, right) => {
-      const leftSupport = left.supportPercent ?? nullSupportRank;
-      const rightSupport = right.supportPercent ?? nullSupportRank;
+      if (sortMode === "published") {
+        const leftPublished = new Date(left.postedAt).getTime();
+        const rightPublished = new Date(right.postedAt).getTime();
 
-      if (leftSupport === rightSupport) {
-        return left.title.localeCompare(right.title);
+        if (leftPublished === rightPublished) {
+          return left.title.localeCompare(right.title);
+        }
+
+        return rightPublished - leftPublished;
       }
 
-      return supportSortDirection === "asc" ? leftSupport - rightSupport : rightSupport - leftSupport;
-    });
-  }, [filtered, supportSortDirection]);
+      const leftSupport = left.supportPercent;
+      const rightSupport = right.supportPercent;
 
-  const supportSortLabel = supportSortDirection === "asc" ? "Support ↑" : "Support ↓";
-  const SupportSortIcon = supportSortDirection === "asc" ? ArrowUp : ArrowDown;
+      if (leftSupport === null && rightSupport === null) {
+        const leftPublished = new Date(left.postedAt).getTime();
+        const rightPublished = new Date(right.postedAt).getTime();
+        return rightPublished - leftPublished;
+      }
+
+      if (leftSupport === null) {
+        return 1;
+      }
+
+      if (rightSupport === null) {
+        return -1;
+      }
+
+      if (leftSupport === rightSupport) {
+        const leftPublished = new Date(left.postedAt).getTime();
+        const rightPublished = new Date(right.postedAt).getTime();
+        return rightPublished - leftPublished;
+      }
+
+      return sortMode === "support-asc" ? leftSupport - rightSupport : rightSupport - leftSupport;
+    });
+  }, [filtered, sortMode]);
+
+  const supportSortLabel =
+    sortMode === "published" ? "Support" : sortMode === "support-asc" ? "Support ↑" : "Support ↓";
+  const SupportSortIcon =
+    sortMode === "support-asc" ? ArrowUp : sortMode === "support-desc" ? ArrowDown : null;
 
   return (
     <div className="w-full">
@@ -116,12 +143,18 @@ const LeaderboardTable = () => {
             variant="ghost"
             size="sm"
             onClick={() =>
-              setSupportSortDirection((current) => (current === "desc" ? "asc" : "desc"))
+              setSortMode((current) =>
+                current === "published"
+                  ? "support-asc"
+                  : current === "support-asc"
+                    ? "support-desc"
+                    : "published",
+              )
             }
             className="h-auto px-0 py-0 text-xs uppercase tracking-wider text-muted-foreground hover:bg-transparent hover:text-foreground"
           >
             <span>{supportSortLabel}</span>
-            <SupportSortIcon className="h-3.5 w-3.5" />
+            {SupportSortIcon ? <SupportSortIcon className="h-3.5 w-3.5" /> : null}
           </Button>
         </div>
       </div>
