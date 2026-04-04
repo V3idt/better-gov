@@ -1,4 +1,5 @@
 import {
+  getAutomaticAiPolicyBuilderStatus,
   buildClearSessionCookie,
   buildSessionCookie,
   createProposition,
@@ -30,6 +31,7 @@ import type {
 
 const port = Number(process.env.BETTER_GOV_API_PORT ?? "8787");
 const db = openVotingDatabase();
+const AUTOMATIC_AI_PUBLISHING_ENABLED = process.env.BETTER_GOV_ENABLE_AI_AUTOPUBLISH === "1";
 
 const json = (body: unknown, status = 200, headers: HeadersInit = {}) =>
   new Response(JSON.stringify(body), {
@@ -118,6 +120,19 @@ const errorResponse = (error: unknown, headers: HeadersInit = {}) => {
   );
 };
 
+const getAiBuilderStatus = async () => {
+  if (AUTOMATIC_AI_PUBLISHING_ENABLED) {
+    return reconcileAutomaticAiPolicies({ db });
+  }
+
+  const status = getAutomaticAiPolicyBuilderStatus(db);
+  return {
+    ...status,
+    canPublishNow: false,
+    waitingReason: status.waitingReason ?? "Automatic publishing is temporarily unavailable right now.",
+  };
+};
+
 const server = Bun.serve({
   port,
   fetch: async (request) => {
@@ -164,7 +179,9 @@ const server = Bun.serve({
         }
 
         const response = json(createProposition(db, readSessionCookie(request), body, readClientAddress(request)));
-        void reconcileAutomaticAiPolicies({ db }).catch((error) => console.error("[ai] automatic publish reconcile failed", error));
+        if (AUTOMATIC_AI_PUBLISHING_ENABLED) {
+          void reconcileAutomaticAiPolicies({ db }).catch((error) => console.error("[ai] automatic publish reconcile failed", error));
+        }
         return response;
       }
 
@@ -173,7 +190,7 @@ const server = Bun.serve({
       }
 
       if (request.method === "GET" && url.pathname === "/api/ai/policy-builder-status") {
-        return json(await reconcileAutomaticAiPolicies({ db }));
+        return json(await getAiBuilderStatus());
       }
 
       if (request.method === "GET" && url.pathname === "/api/security/status") {
@@ -338,17 +355,18 @@ const server = Bun.serve({
 
 console.log(`better-gov api running on http://127.0.0.1:${server.port}`);
 
-void reconcileAutomaticAiPolicies({ db }).catch((error) =>
-  console.error("[ai] automatic publish reconcile failed", error),
-);
-const aiPublishInterval = setInterval(() => {
-  void reconcileAutomaticAiPolicies({ db }).catch((error) =>
-    console.error("[ai] automatic publish reconcile failed", error),
-  );
-}, 60_000);
+const aiPublishInterval = AUTOMATIC_AI_PUBLISHING_ENABLED
+  ? setInterval(() => {
+      void reconcileAutomaticAiPolicies({ db }).catch((error) =>
+        console.error("[ai] automatic publish reconcile failed", error),
+      );
+    }, 60_000)
+  : null;
 
 const shutdown = () => {
-  clearInterval(aiPublishInterval);
+  if (aiPublishInterval) {
+    clearInterval(aiPublishInterval);
+  }
   server.stop(true);
   db.close();
 };
