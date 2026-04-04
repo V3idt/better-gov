@@ -327,9 +327,6 @@ const toVote = (row: VoteRow): VoteRecord => ({
   updatedAt: row.updated_at,
 });
 
-const syntheticClosedVoterId = (propositionId: string, choice: VoteChoice, index: number) =>
-  `person_seed_${propositionId.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}_${choice}_${index + 1}`;
-
 const personSql = `
   INSERT INTO people (id, display_name, primary_role, created_at, updated_at)
   VALUES (?, ?, ?, ?, ?)
@@ -473,6 +470,16 @@ const aiChatAnswerSql = `
 const propositionSubmissionLogSql = `
   INSERT INTO proposition_submission_log (person_id, ip_hash, created_at)
   VALUES (?, ?, ?)
+`;
+
+const propositionVoteTotalsSql = `
+  INSERT INTO proposition_vote_totals (policy_id, approve_count, reject_count, abstain_count, updated_at)
+  VALUES (?, ?, ?, ?, ?)
+  ON CONFLICT(policy_id) DO UPDATE SET
+    approve_count = excluded.approve_count,
+    reject_count = excluded.reject_count,
+    abstain_count = excluded.abstain_count,
+    updated_at = excluded.updated_at
 `;
 
 const loadPerson = (db: Database, personId: string) => {
@@ -673,6 +680,18 @@ const loadVote = (db: Database, propositionId: string, personId: string) => {
 };
 
 const loadVoteCounts = (db: Database, propositionId: string): VoteCounts => {
+  const seededCountsRow = db
+    .prepare(
+      `
+        SELECT approve_count, reject_count, abstain_count
+        FROM proposition_vote_totals
+        WHERE policy_id = ?
+      `,
+    )
+    .get(propositionId) as
+    | { approve_count: number; reject_count: number; abstain_count: number }
+    | undefined;
+
   const rows = db
     .prepare(
       `
@@ -685,14 +704,16 @@ const loadVoteCounts = (db: Database, propositionId: string): VoteCounts => {
     .all(propositionId) as Array<{ choice: VoteChoice; count: number }>;
 
   const counts: VoteCounts = {
-    approve: 0,
-    reject: 0,
-    abstain: 0,
+    approve: seededCountsRow?.approve_count ?? 0,
+    reject: seededCountsRow?.reject_count ?? 0,
+    abstain: seededCountsRow?.abstain_count ?? 0,
     total: 0,
   };
 
+  counts.total = counts.approve + counts.reject + counts.abstain;
+
   for (const row of rows) {
-    counts[row.choice] = row.count;
+    counts[row.choice] += row.count;
     counts.total += row.count;
   }
 
@@ -968,30 +989,14 @@ const seedPropositions = (db: Database) => {
       ).run(proposition.id, index, check.name, check.status);
     });
 
-    if (proposition.status === "closed") {
-      db.prepare(`DELETE FROM votes WHERE policy_id = ?`).run(proposition.id);
-
-      const seededVotes = proposition.seedVotes ?? { approve: 0, reject: 0, abstain: 0 };
-      const voteChoices = [
-        ["approve", seededVotes.approve],
-        ["reject", seededVotes.reject],
-        ["abstain", seededVotes.abstain],
-      ] as const;
-
-      for (const [choice, count] of voteChoices) {
-        for (let index = 0; index < count; index += 1) {
-          const personId = syntheticClosedVoterId(proposition.id, choice, index);
-          db.prepare(personSql).run(
-            personId,
-            `Archived voter ${index + 1}`,
-            "student",
-            timestamp,
-            timestamp,
-          );
-          db.prepare(voteSql).run(proposition.id, personId, choice, timestamp, timestamp);
-        }
-      }
-    }
+    const seededVotes = proposition.seedVotes ?? { approve: 0, reject: 0, abstain: 0 };
+    db.prepare(propositionVoteTotalsSql).run(
+      proposition.id,
+      seededVotes.approve,
+      seededVotes.reject,
+      seededVotes.abstain,
+      timestamp,
+    );
   }
 };
 

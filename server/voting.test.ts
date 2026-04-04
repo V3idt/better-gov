@@ -49,6 +49,7 @@ describe("voting database", () => {
     expect(list.propositions.length).toBeGreaterThan(0);
     expect(list.propositions.some((item) => item.status === "closed")).toBe(false);
     expect(list.propositions[0]?.path.startsWith("/")).toBe(true);
+    expect(list.propositions.some((item) => (item.turnoutCount ?? 0) > 0)).toBe(true);
   });
 
   it("returns closed propositions through the history query", () => {
@@ -84,14 +85,15 @@ describe("voting database", () => {
   it("derives proposition support and the current account vote from stored votes", async () => {
     const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("leila.mekonnen"));
     const verified = verifySignInCode(db, emailAtConfiguredDomain("leila.mekonnen"), codeDelivery.devCode ?? "");
+    const propositionPath = "/campus/transparent-department-budgets";
     const propositionId = "campus:transparent-department-budgets";
+    const beforeVote = getPropositionDetail(db, null, propositionPath);
 
     submitVote(db, verified.session.id, propositionId, "approve");
-    const detail = getPropositionDetail(db, verified.session.id, "/campus/transparent-department-budgets");
+    const detail = getPropositionDetail(db, verified.session.id, propositionPath);
 
-    expect(detail.proposition.supportPercent).toBe(100);
-    expect(detail.proposition.turnoutCount).toBe(1);
-    expect(detail.proposition.voteBreakdown[0]?.count).toBe(1);
+    expect(detail.proposition.turnoutCount).toBe(beforeVote.proposition.turnoutCount + 1);
+    expect(detail.proposition.voteBreakdown[0]?.count).toBe((beforeVote.proposition.voteBreakdown[0]?.count ?? 0) + 1);
     expect(detail.proposition.myVote?.choice).toBe("approve");
   });
 

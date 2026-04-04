@@ -26,6 +26,43 @@ export type SeedProposition = {
   };
 };
 
+const parseCompactCount = (value: string) => {
+  const normalized = value.trim().toUpperCase().replace(/,/g, "");
+  const match = normalized.match(/^(\d+(?:\.\d+)?)([KM]?)$/);
+
+  if (!match) {
+    return 0;
+  }
+
+  const amount = Number(match[1]);
+  const suffix = match[2];
+
+  if (suffix === "M") {
+    return Math.round(amount * 1_000_000);
+  }
+
+  if (suffix === "K") {
+    return Math.round(amount * 1_000);
+  }
+
+  return Math.round(amount);
+};
+
+const deriveSeedVotesFromBallotItem = (item: (typeof ballotItems)[number]) => {
+  const turnout = parseCompactCount(item.turnout.replace(/\s+votes?$/i, ""));
+  const approveShare = item.voteBreakdown.find((entry) => entry.label === "Approve")?.share ?? 0;
+  const rejectShare = item.voteBreakdown.find((entry) => entry.label === "Reject")?.share ?? 0;
+  const approve = Math.round((turnout * approveShare) / 100);
+  const reject = Math.round((turnout * rejectShare) / 100);
+  const abstain = Math.max(turnout - approve - reject, 0);
+
+  return {
+    approve,
+    reject,
+    abstain,
+  };
+};
+
 const openPropositions: SeedProposition[] = ballotItems.map((item) => ({
   id: propositionIdFromParts(item.jurisdictionSlug, item.slug),
   slug: item.slug,
@@ -44,6 +81,7 @@ const openPropositions: SeedProposition[] = ballotItems.map((item) => ({
   brief: item.brief,
   displayOrder: item.rank,
   path: propositionPathFromParts(item.jurisdictionSlug, item.slug),
+  seedVotes: deriveSeedVotesFromBallotItem(item),
 }));
 
 const closedPropositions: SeedProposition[] = [
