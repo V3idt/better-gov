@@ -93,7 +93,7 @@ const PropositionComposer = () => {
       await queryClient.invalidateQueries({ queryKey: propositionListQueryKey });
       await queryClient.invalidateQueries({ queryKey: propositionHistoryQueryKey });
       await queryClient.invalidateQueries({ queryKey: ["proposition"] });
-      toast.success("Proposition posted as draft.");
+      toast.success("Proposition posted.");
       navigate(payload.proposition.path);
     },
   });
@@ -137,7 +137,7 @@ const PropositionComposer = () => {
           <DialogHeader className="space-y-3 border-b border-border px-6 pb-4 pt-6 text-left">
             <DialogTitle className="font-mono text-base uppercase tracking-[0.18em]">Post proposition</DialogTitle>
             <DialogDescription className="max-w-xl text-sm leading-relaxed text-muted-foreground">
-              New submissions start as draft. They show up in the draft view immediately, but they do not open for voting until a review workflow exists.
+              Post a proposition directly to the open list. It will appear on the site immediately.
             </DialogDescription>
           </DialogHeader>
 
@@ -261,7 +261,7 @@ const PropositionComposer = () => {
                   Cancel
                 </Button>
                 <Button type="submit" variant="outline" disabled={createMutation.isPending} className={actionButtonClass}>
-                  {createMutation.isPending ? "Posting" : "Post draft"}
+                  {createMutation.isPending ? "Posting" : "Post proposition"}
                 </Button>
               </div>
             </DialogFooter>

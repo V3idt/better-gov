@@ -97,7 +97,7 @@ describe("voting database", () => {
     expect(detail.proposition.myVote?.choice).toBe("approve");
   });
 
-  it("creates a draft proposition for an authenticated campus account", async () => {
+  it("creates an open proposition for an authenticated campus account", async () => {
     const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("leila.mekonnen"));
     const verified = verifySignInCode(db, emailAtConfiguredDomain("leila.mekonnen"), codeDelivery.devCode ?? "");
 
@@ -105,7 +105,7 @@ describe("voting database", () => {
     const propositions = listPropositions(db);
 
     expect(created.proposition.title).toBe("Keep The Student Center Open Later");
-    expect(created.proposition.status).toBe("draft");
+    expect(created.proposition.status).toBe("open");
     expect(created.proposition.sponsor).toBe("Leila Mekonnen");
     expect(created.proposition.path.startsWith("/campus/keep-the-student-center-open-later")).toBe(true);
     expect(propositions.propositions.some((item) => item.id === created.proposition.id)).toBe(true);

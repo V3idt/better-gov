@@ -1474,7 +1474,7 @@ export const createProposition = (
       slug,
       jurisdictionSlug,
       validated.title,
-      "draft",
+      "open",
       validated.closesAt,
       path,
       timestamp,
