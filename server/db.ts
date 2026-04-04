@@ -1879,7 +1879,12 @@ export const getAutomaticAiPolicyBuilderStatus = (db: Database): PropositionAiPo
       outcome: propositionOutcomeForCounts(counts),
     };
   });
-  const nextSourcePropositions = selectAiDraftSourcePropositions(closedHistory, 3, Array.from(new Set([...loadAiGeneratedSourceIds(db), ...activeSourceIds])));
+  const nextSourcePropositions = selectAiDraftSourcePropositions(
+    closedHistory,
+    3,
+    Array.from(new Set([...loadAiGeneratedSourceIds(db), ...activeSourceIds])),
+    { allowReuseWhenEmpty: true },
+  );
   const nextPublishAt = activePolicies
     .map((policy) => policy.closesAt)
     .sort((left, right) => Date.parse(left) - Date.parse(right))[0] ?? null;

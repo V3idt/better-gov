@@ -291,11 +291,27 @@ export const selectAiDraftSourcePropositions = (
   propositions: PropositionHistoryItem[],
   maxSources = 3,
   excludedIds: string[] = [],
+  options: { allowReuseWhenEmpty?: boolean } = {},
 ) =>
-  [...propositions]
-    .filter((proposition) => proposition.status === "closed" && !proposition.aiGenerated && !excludedIds.includes(proposition.id))
-    .sort(sortPropositionByPolicyImpact)
-    .slice(0, maxSources);
+  (() => {
+    const selectEligible = (ignoreExcludedIds: boolean) =>
+      [...propositions]
+        .filter(
+          (proposition) =>
+            proposition.status === "closed" &&
+            !proposition.aiGenerated &&
+            (ignoreExcludedIds || !excludedIds.includes(proposition.id)),
+        )
+        .sort(sortPropositionByPolicyImpact)
+        .slice(0, maxSources);
+
+    const selected = selectEligible(false);
+    if (selected.length > 0 || !options.allowReuseWhenEmpty) {
+      return selected;
+    }
+
+    return selectEligible(true);
+  })();
 
 export const isApiUnavailableError = (error: unknown) =>
   error instanceof VotingApiError && error.code === "api_unavailable";
