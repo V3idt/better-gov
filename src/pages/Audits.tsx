@@ -1,28 +1,19 @@
-import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
-import AccountDialog from "@/components/AccountDialog";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "@/components/ui/sonner";
 import Navbar from "@/components/Navbar";
 import {
-  createPropositionAiDraft,
+  aiPolicyBuilderStatusQueryKey,
+  getAiPolicyBuilderStatus,
   listPropositionHistory,
-  getSession,
   propositionHistoryQueryKey,
-  propositionListQueryKey,
-  sessionQueryKey,
 } from "@/lib/voting-api";
 import {
   formatSupportPercent,
   formatTurnout,
-  selectAiDraftSourcePropositions,
-  type AiProviderPreference,
   type PropositionOutcome,
-  VotingApiError,
 } from "@/lib/voting";
 
 const outcomeClass = (outcome: PropositionOutcome) => {
@@ -32,59 +23,56 @@ const outcomeClass = (outcome: PropositionOutcome) => {
 };
 
 const Audits = () => {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [accountDialogOpen, setAccountDialogOpen] = useState(false);
-  const [draftProvider, setDraftProvider] = useState<AiProviderPreference>("auto");
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
-  const sessionQuery = useQuery({
-    queryKey: sessionQueryKey,
-    queryFn: getSession,
-  });
+  useEffect(() => {
+    const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const historyQuery = useQuery({
     queryKey: propositionHistoryQueryKey,
     queryFn: listPropositionHistory,
   });
 
-  const propositions = historyQuery.data?.propositions ?? [];
-  const draftSourcePropositions = useMemo(() => selectAiDraftSourcePropositions(propositions, 3), [propositions]);
-  const draftSourceIds = draftSourcePropositions.map((proposition) => proposition.id);
-  const hasEnoughSourcePropositions = draftSourcePropositions.length >= 2;
-  const draftSourceTitles = draftSourcePropositions.map((proposition) => proposition.title);
-
-  const isAuthenticated = sessionQuery.data?.authenticated === true;
-
-  const draftMutation = useMutation({
-    mutationFn: () => {
-      if (!hasEnoughSourcePropositions) {
-        throw new Error("Need at least two closed propositions to synthesize a new policy.");
-      }
-
-      return createPropositionAiDraft(draftSourcePropositions[0].id, {
-        provider: draftProvider,
-        sourcePropositionIds: draftSourceIds,
-      });
-    },
-    onSuccess: async (payload) => {
-      await queryClient.invalidateQueries({ queryKey: propositionListQueryKey });
-      await queryClient.invalidateQueries({ queryKey: propositionHistoryQueryKey });
-      toast.success(`Policy created from ${payload.sourcePropositionTitles.join(", ")}.`);
-      navigate(payload.proposition.path);
-    },
+  const builderQuery = useQuery({
+    queryKey: aiPolicyBuilderStatusQueryKey,
+    queryFn: getAiPolicyBuilderStatus,
+    refetchInterval: 60_000,
   });
 
-  const draftErrorMessage =
-    draftMutation.error instanceof VotingApiError
-      ? draftMutation.error.message
-      : draftMutation.error instanceof Error
-        ? draftMutation.error.message
-        : "";
+  const propositions = historyQuery.data?.propositions ?? [];
+  const builderStatus = builderQuery.data;
+
+  const countdownText = (closesAt: string | null) => {
+    if (!closesAt) {
+      return "Waiting for a free AI slot";
+    }
+
+    const diff = Date.parse(closesAt) - currentTime;
+    if (Number.isNaN(diff) || diff <= 0) {
+      return "Publishing now";
+    }
+
+    const totalMinutes = Math.floor(diff / 60000);
+    const days = Math.floor(totalMinutes / (24 * 60));
+    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+    const minutes = totalMinutes % 60;
+
+    if (days > 0) {
+      return `${days}d ${hours}h ${minutes}m`;
+    }
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+
+    return `${minutes}m`;
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground font-mono">
       <Navbar />
-      <AccountDialog open={accountDialogOpen} onOpenChange={setAccountDialogOpen} />
       <div className="mx-auto max-w-5xl px-6 pb-16 pt-12">
         <h1 className="mb-4 text-3xl font-semibold text-foreground">Vote History</h1>
         <p className="mb-10 text-muted-foreground">Closed propositions and their final results.</p>
@@ -95,32 +83,38 @@ const Audits = () => {
               <div className="space-y-1">
                 <CardTitle className="text-sm uppercase tracking-[0.16em]">AI policy builder</CardTitle>
                 <CardDescription className="max-w-2xl leading-relaxed">
-                  Start from the strongest closed policies and synthesize a follow-up open policy for the people who supported them.
+                  The server automatically keeps up to two AI-created open policies published at a time and synthesizes the next one from the strongest closed policies.
                 </CardDescription>
               </div>
               <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
-                Open policy
+                Auto publish
               </Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-4 p-5">
-            {draftSourcePropositions.length > 0 ? (
-              <>
-                <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
-                  <div className="space-y-3 rounded border border-border bg-background/60 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Source policies</p>
-                      <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.14em] text-muted-foreground">
-                        {draftSourcePropositions.length} selected
-                      </Badge>
-                    </div>
+            {builderQuery.isLoading ? (
+              <div className="rounded border border-border bg-background/60 p-4 text-sm text-muted-foreground">
+                Loading automatic policy builder status ...
+              </div>
+            ) : builderQuery.isError ? (
+              <div className="rounded border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-500">
+                Could not load automatic policy builder status.
+              </div>
+            ) : builderStatus ? (
+              <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
+                <div className="space-y-3 rounded border border-border bg-background/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Next source policies</p>
+                    <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.14em] text-muted-foreground">
+                      {builderStatus.nextSourcePropositions.length} selected
+                    </Badge>
+                  </div>
+                  {builderStatus.nextSourcePropositions.length > 0 ? (
                     <div className="space-y-3">
-                      {draftSourcePropositions.map((source, index) => (
-                        <div key={source.id} className={index > 0 ? "border-t border-border/60 pt-3" : ""}>
+                      {builderStatus.nextSourcePropositions.map((source, index) => (
+                        <div key={source.propositionId} className={index > 0 ? "border-t border-border/60 pt-3" : ""}>
                           <p className="break-words text-lg font-semibold text-foreground">{source.title}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {source.category} / {source.jurisdiction}
-                          </p>
+                          <p className="text-sm text-muted-foreground">{source.path}</p>
                           <div className="mt-2 flex flex-wrap gap-2">
                             <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.14em]">
                               {formatSupportPercent(source.supportPercent)}
@@ -132,59 +126,51 @@ const Audits = () => {
                         </div>
                       ))}
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Provider</p>
-                    <Select value={draftProvider} onValueChange={(value) => setDraftProvider(value as AiProviderPreference)}>
-                      <SelectTrigger className="border-border bg-background/60 font-mono text-xs uppercase tracking-[0.16em]">
-                        <SelectValue placeholder="Choose provider" />
-                      </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="auto">Auto</SelectItem>
-                      <SelectItem value="openai">OpenAI</SelectItem>
-                      <SelectItem value="gemini">Gemini</SelectItem>
-                      <SelectItem value="grok">Grok</SelectItem>
-                    </SelectContent>
-                  </Select>
-                    <Button
-                      type="button"
-                      className="w-full bg-foreground text-background hover:bg-foreground/90"
-                      disabled={draftMutation.isPending || !hasEnoughSourcePropositions}
-                      onClick={() => {
-                        if (!isAuthenticated) {
-                          setAccountDialogOpen(true);
-                          return;
-                        }
-
-                        draftMutation.mutate();
-                      }}
-                    >
-                      {draftMutation.isPending ? "Creating..." : "Generate policy"}
-                    </Button>
-                    {!hasEnoughSourcePropositions ? (
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        Need at least two closed propositions before the builder can synthesize a new open policy.
-                      </p>
-                    ) : (
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        Synthesizing from {draftSourceIds.length} closed propositions: {draftSourceTitles.join(", ")}.
-                      </p>
-                    )}
-                  </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Need at least two closed propositions before the system can synthesize the next AI policy.
+                    </p>
+                  )}
                 </div>
 
-                {draftErrorMessage ? (
-                  <div className="rounded border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-500">
-                    {draftErrorMessage}
+                <div className="space-y-3">
+                  <div className="rounded border border-border bg-background/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Active AI policies</p>
+                    <div className="mt-2 flex items-baseline gap-2">
+                      <span className="text-2xl font-semibold text-foreground">{builderStatus.activeCount}</span>
+                      <span className="text-sm text-muted-foreground">/ {builderStatus.limit}</span>
+                    </div>
+                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                      {builderStatus.activeCount >= builderStatus.limit
+                        ? `Next publish in ${countdownText(builderStatus.nextPublishAt)}.`
+                        : "A new AI policy can publish as soon as the next source set is ready."}
+                    </p>
                   </div>
-                ) : null}
-              </>
-            ) : (
-              <div className="rounded border border-border bg-background/60 p-4 text-sm text-muted-foreground">
-                No closed propositions are available yet for policy generation.
+
+                  <div className="rounded border border-border bg-background/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Live slots</p>
+                    {builderStatus.activePolicies.length > 0 ? (
+                      <div className="mt-2 space-y-2">
+                        {builderStatus.activePolicies.map((policy) => (
+                          <div key={policy.propositionId} className="rounded border border-border/60 bg-secondary/20 p-3">
+                            <p className="break-words text-sm font-semibold text-foreground">{policy.title}</p>
+                            <p className="text-xs text-muted-foreground">{countdownText(policy.closesAt)} left</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-sm text-muted-foreground">No active AI policies right now.</p>
+                    )}
+                  </div>
+
+                  {builderStatus.waitingReason ? (
+                    <div className="rounded border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-500">
+                      {builderStatus.waitingReason}
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            )}
+            ) : null}
           </CardContent>
         </Card>
 

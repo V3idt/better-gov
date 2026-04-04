@@ -9,9 +9,12 @@ import type {
   AiProviderPreference,
   CreatePropositionInput,
   CreatePropositionResponse,
+  PropositionAiActiveSummary,
   PropositionAiChatResponse,
   PropositionAiDraftResponse,
   PropositionAiExplanation,
+  PropositionAiPolicyBuilderStatus,
+  PropositionAiSourceSummary,
   Person,
   PropositionDetail,
   PropositionDetailResponse,
@@ -34,9 +37,13 @@ import type {
   VoteChoice,
   VoteRecord,
 } from "../src/lib/voting.ts";
+import { selectAiDraftSourcePropositions } from "../src/lib/voting.ts";
 
 export const SESSION_COOKIE_NAME = "better-gov.session";
 export const DEFAULT_DB_PATH = process.env.BETTER_GOV_DB_PATH ?? "/tmp/better-gov.sqlite";
+export const AI_SYSTEM_PERSON_ID = "person_ai_policy_builder";
+export const AI_SYSTEM_SESSION_ID = "session_ai_policy_builder";
+export const AI_AUTOPUBLISH_LIMIT = 2;
 
 const MIGRATION_SQL = readFileSync(new URL("./migrations/001_init.sql", import.meta.url), "utf8");
 const OTP_LENGTH = 6;
@@ -1099,6 +1106,54 @@ const propositionStatusForRow = (row: PropositionRow): PropositionStatus => {
   return Date.parse(row.closes_at) - Date.now() <= CLOSING_SOON_WINDOW_MS ? "closing_soon" : "open";
 };
 
+const syncExpiredPropositions = (db: Database) => {
+  const timestamp = now();
+  db.prepare(
+    `
+      UPDATE policies
+      SET status = 'closed',
+          updated_at = ?
+      WHERE status <> 'closed' AND closes_at <= ?
+    `,
+  ).run(timestamp, timestamp);
+};
+
+const loadAiGeneratedSourceIds = (db: Database) => {
+  const rows = db
+    .prepare(
+      `
+        SELECT ai_source_policy_ids, ai_source_policy_id
+        FROM policies
+        WHERE ai_generated = 1
+      `,
+    )
+    .all() as Array<{ ai_source_policy_ids: string | null; ai_source_policy_id: string | null }>;
+
+  const sourceIds = new Set<string>();
+  for (const row of rows) {
+    if (row.ai_source_policy_ids) {
+      try {
+        const parsed = JSON.parse(row.ai_source_policy_ids);
+        if (Array.isArray(parsed)) {
+          for (const value of parsed) {
+            if (typeof value === "string" && value.trim()) {
+              sourceIds.add(value.trim());
+            }
+          }
+        }
+      } catch {
+        // ignore malformed cached metadata
+      }
+    }
+
+    if (row.ai_source_policy_id) {
+      sourceIds.add(row.ai_source_policy_id);
+    }
+  }
+
+  return Array.from(sourceIds);
+};
+
 const propositionOutcomeForCounts = (counts: VoteCounts): PropositionOutcome => {
   if (!counts.total) {
     return "NO_RESULT";
@@ -1476,6 +1531,12 @@ const seedRoster = (db: Database) => {
   }
 };
 
+const seedAiSystemAccount = (db: Database) => {
+  const timestamp = "2026-04-04T08:00:00.000Z";
+  db.prepare(personSql).run(AI_SYSTEM_PERSON_ID, "AI Policy Builder", "dual", timestamp, timestamp);
+  db.prepare(sessionSql).run(AI_SYSTEM_SESSION_ID, AI_SYSTEM_PERSON_ID, timestamp, timestamp);
+};
+
 const ensureDevelopmentRosterMember = (db: Database, email: string) => {
   const normalizedEmail = normalizeEmail(email);
   const existing = loadRosterMemberByEmail(db, normalizedEmail);
@@ -1531,6 +1592,7 @@ const initializeDatabase = (db: Database) => {
 
   seedPropositions(db);
   seedRoster(db);
+  seedAiSystemAccount(db);
   db.prepare(`UPDATE policies SET status = 'open', updated_at = ? WHERE status = 'draft'`).run(now());
 };
 
@@ -1766,6 +1828,7 @@ export const listPropositions = (
   sessionId: string | null,
   mode: PropositionListMode = "default",
 ): PropositionListResponse => {
+  syncExpiredPropositions(db);
   const rows = listPropositionRows(db).filter((row) => row.lifecycle_status !== "closed");
   const session = getResolvedSession(db, sessionId);
 
@@ -1780,6 +1843,7 @@ export const listPropositions = (
 };
 
 export const listPropositionHistory = (db: Database): PropositionHistoryResponse => {
+  syncExpiredPropositions(db);
   const propositions: PropositionHistoryItem[] = listPropositionRows(db, "closed").map((row) => {
     const counts = loadVoteCounts(db, row.id);
     return {
@@ -1789,6 +1853,52 @@ export const listPropositionHistory = (db: Database): PropositionHistoryResponse
   });
 
   return { propositions };
+};
+
+export const getAutomaticAiPolicyBuilderStatus = (db: Database): PropositionAiPolicyBuilderStatus => {
+  syncExpiredPropositions(db);
+
+  const activeRows = listPropositionRows(db).filter((row) => row.ai_generated === 1 && row.lifecycle_status !== "closed");
+  const activePolicies: PropositionAiActiveSummary[] = activeRows.map((row) => {
+    const counts = loadVoteCounts(db, row.id);
+    return {
+      propositionId: row.id,
+      title: row.title,
+      path: row.source_path,
+      supportPercent: supportPercentForCounts(counts),
+      turnoutCount: counts.total,
+      closesAt: row.closes_at,
+    };
+  });
+
+  const activeSourceIds = new Set(activeRows.flatMap((row) => loadAiOriginSources(db, row)?.map((source) => source.propositionId) ?? []));
+  const closedHistory = listPropositionRows(db, "closed").map((row) => {
+    const counts = loadVoteCounts(db, row.id);
+    return {
+      ...toPropositionSummary(row, counts),
+      outcome: propositionOutcomeForCounts(counts),
+    };
+  });
+  const nextSourcePropositions = selectAiDraftSourcePropositions(closedHistory, 3, Array.from(new Set([...loadAiGeneratedSourceIds(db), ...activeSourceIds])));
+  const nextPublishAt = activePolicies
+    .map((policy) => policy.closesAt)
+    .sort((left, right) => Date.parse(left) - Date.parse(right))[0] ?? null;
+
+  return {
+    limit: AI_AUTOPUBLISH_LIMIT,
+    activeCount: activePolicies.length,
+    activePolicies,
+    nextSourcePropositions: nextSourcePropositions.map((source) => ({
+      propositionId: source.id,
+      title: source.title,
+      path: source.path,
+      supportPercent: source.supportPercent,
+      turnoutCount: source.turnoutCount,
+    })),
+    nextPublishAt,
+    canPublishNow: activePolicies.length < AI_AUTOPUBLISH_LIMIT,
+    waitingReason: nextSourcePropositions.length < 2 ? "Need at least two closed propositions to synthesize the next policy." : null,
+  };
 };
 
 export const getPropositionVoteHistory = (db: Database, propositionId: string): PropositionVoteHistoryResponse => {
@@ -1808,6 +1918,7 @@ export const getPropositionDetail = (
   sessionId: string | null,
   propositionPath: string,
 ): PropositionDetailResponse => {
+  syncExpiredPropositions(db);
   const proposition = loadPropositionByPath(db, propositionPath);
   if (!proposition) {
     throw new VotingDatabaseError("proposition_not_found", "Proposition not found.");
@@ -1831,6 +1942,7 @@ export const getPropositionDetailById = (
   sessionId: string | null,
   propositionId: string,
 ): PropositionDetailResponse => {
+  syncExpiredPropositions(db);
   const proposition = loadPropositionById(db, propositionId);
   if (!proposition) {
     throw new VotingDatabaseError("proposition_not_found", "Proposition not found.");
@@ -1941,18 +2053,21 @@ export const createProposition = (
   const validated = validateCreatePropositionInput(input);
   const ipHash = clientIpAddress ? hashRateLimitValue(clientIpAddress) : null;
   const submissionWindowStart = new Date(Date.now() - PROPOSITION_SUBMISSION_WINDOW_MS).toISOString();
+  const isAiAutomation = session.person.id === AI_SYSTEM_PERSON_ID;
 
   return db.transaction(() => {
-    const personSubmissionCount = countRecentSubmissionsForPerson(db, session.person.id, submissionWindowStart);
-    if (personSubmissionCount >= PROPOSITION_SUBMISSION_LIMIT_PER_PERSON) {
-      throw new VotingDatabaseError(
-        "rate_limited",
-        `You can submit up to ${PROPOSITION_SUBMISSION_LIMIT_PER_PERSON} propositions per day.`,
-      );
-    }
+    if (!isAiAutomation) {
+      const personSubmissionCount = countRecentSubmissionsForPerson(db, session.person.id, submissionWindowStart);
+      if (personSubmissionCount >= PROPOSITION_SUBMISSION_LIMIT_PER_PERSON) {
+        throw new VotingDatabaseError(
+          "rate_limited",
+          `You can submit up to ${PROPOSITION_SUBMISSION_LIMIT_PER_PERSON} propositions per day.`,
+        );
+      }
 
-    if (ipHash && countRecentSubmissionsForIp(db, ipHash, submissionWindowStart) >= PROPOSITION_SUBMISSION_LIMIT_PER_IP) {
-      throw new VotingDatabaseError("rate_limited", "Too many proposition submissions from this connection. Try again later.");
+      if (ipHash && countRecentSubmissionsForIp(db, ipHash, submissionWindowStart) >= PROPOSITION_SUBMISSION_LIMIT_PER_IP) {
+        throw new VotingDatabaseError("rate_limited", "Too many proposition submissions from this connection. Try again later.");
+      }
     }
 
     const timestamp = now();
@@ -2001,7 +2116,9 @@ export const createProposition = (
     });
 
     db.prepare(propositionAuthorshipSql).run(propositionId, session.person.id, timestamp);
-    db.prepare(propositionSubmissionLogSql).run(session.person.id, ipHash, timestamp);
+    if (!isAiAutomation) {
+      db.prepare(propositionSubmissionLogSql).run(session.person.id, ipHash, timestamp);
+    }
     recordVoteHistoryPoint(
       db,
       propositionId,
@@ -2073,6 +2190,7 @@ export const submitVote = (
   propositionId: string,
   choice: VoteChoice,
 ): SubmitVoteResponse => {
+  syncExpiredPropositions(db);
   const session = requireSessionContext(db, sessionId);
   const proposition = loadPropositionById(db, propositionId);
 

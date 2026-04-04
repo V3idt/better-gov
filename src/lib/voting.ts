@@ -81,6 +81,10 @@ export type PropositionAiSourceSummary = {
   turnoutCount: number;
 };
 
+export type PropositionAiActiveSummary = PropositionAiSourceSummary & {
+  closesAt: string;
+};
+
 export type PropositionAiOrigin = {
   sourcePropositionId: string;
   sourcePropositionTitle: string;
@@ -198,6 +202,16 @@ export type PropositionAiDraftResponse = {
   proposition: PropositionDetail;
 };
 
+export type PropositionAiPolicyBuilderStatus = {
+  limit: number;
+  activeCount: number;
+  activePolicies: PropositionAiActiveSummary[];
+  nextSourcePropositions: PropositionAiSourceSummary[];
+  nextPublishAt: string | null;
+  canPublishNow: boolean;
+  waitingReason: string | null;
+};
+
 export type AuthenticatedSessionResponse = {
   authenticated: true;
   session: SessionRecord;
@@ -273,8 +287,15 @@ const sortPropositionByPolicyImpact = (left: PropositionHistoryItem, right: Prop
   return left.title.localeCompare(right.title);
 };
 
-export const selectAiDraftSourcePropositions = (propositions: PropositionHistoryItem[], maxSources = 3) =>
-  [...propositions].filter((proposition) => proposition.status === "closed").sort(sortPropositionByPolicyImpact).slice(0, maxSources);
+export const selectAiDraftSourcePropositions = (
+  propositions: PropositionHistoryItem[],
+  maxSources = 3,
+  excludedIds: string[] = [],
+) =>
+  [...propositions]
+    .filter((proposition) => proposition.status === "closed" && !proposition.aiGenerated && !excludedIds.includes(proposition.id))
+    .sort(sortPropositionByPolicyImpact)
+    .slice(0, maxSources);
 
 export const isApiUnavailableError = (error: unknown) =>
   error instanceof VotingApiError && error.code === "api_unavailable";

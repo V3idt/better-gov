@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import {
+  AI_SYSTEM_SESSION_ID,
   getCachedAiExplanation,
   getCachedAiChatAnswer,
   getCachedAiPolicyDraft,
+  getAutomaticAiPolicyBuilderStatus,
   getPropositionDetailById,
   listPropositionHistory,
   getResolvedSession,
@@ -52,6 +54,7 @@ const draftSchema = z.object({
 });
 
 type DraftPayload = z.infer<typeof draftSchema>;
+let automaticAiPublishInFlight: Promise<ReturnType<typeof getAutomaticAiPolicyBuilderStatus>> | null = null;
 
 const explanationJsonSchema = {
   type: "object",
@@ -1187,7 +1190,7 @@ export const getPolicyDraft = async ({
   const contentHash = hashPropositionSetContext(sourceDetails);
   const cacheKey = primarySource.id;
   const cached = getCachedAiPolicyDraft(db, cacheKey, requestedProvider, contentHash, DRAFT_PROMPT_VERSION);
-  if (cached) {
+  if (cached && cached.proposition.status !== "closed") {
     return {
       ...cached,
       cached: true,
@@ -1287,4 +1290,48 @@ export const getPolicyDraft = async ({
     "delivery_failed",
     "Unable to reach an AI provider. Please ensure at least one provider key is configured.",
   );
+};
+
+export const reconcileAutomaticAiPolicies = async ({
+  db,
+  fetchImpl = fetch,
+}: {
+  db: VotingDatabase;
+  fetchImpl?: typeof fetch;
+}) => {
+  if (automaticAiPublishInFlight) {
+    return automaticAiPublishInFlight;
+  }
+
+  automaticAiPublishInFlight = (async () => {
+    const status = getAutomaticAiPolicyBuilderStatus(db);
+    if (status.activeCount >= status.limit || status.nextSourcePropositions.length < 2) {
+      return status;
+    }
+
+    let currentStatus = status;
+    while (currentStatus.activeCount < currentStatus.limit && currentStatus.nextSourcePropositions.length >= 2) {
+      try {
+        await getPolicyDraft({
+          db,
+          sessionId: AI_SYSTEM_SESSION_ID,
+          propositionId: currentStatus.nextSourcePropositions[0].propositionId,
+          sourcePropositionIds: currentStatus.nextSourcePropositions.map((source) => source.propositionId),
+          providerPreference: "auto",
+          fetchImpl,
+        });
+      } catch (error) {
+        console.error("[ai] automatic policy publish failed", error);
+        break;
+      }
+
+      currentStatus = getAutomaticAiPolicyBuilderStatus(db);
+    }
+
+    return currentStatus;
+  })().finally(() => {
+    automaticAiPublishInFlight = null;
+  });
+
+  return automaticAiPublishInFlight;
 };

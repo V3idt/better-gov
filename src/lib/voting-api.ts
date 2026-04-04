@@ -8,6 +8,7 @@ import type {
   PropositionAiDraftRequest,
   PropositionAiDraftResponse,
   PropositionAiExplanationResponse,
+  PropositionAiPolicyBuilderStatus,
   PropositionHistoryResponse,
   PropositionListMode,
   PropositionListResponse,
@@ -32,6 +33,7 @@ export const propositionVoteHistoryQueryKey = (propositionId: string) =>
   ["proposition", propositionId, "vote-history"] as const;
 export const propositionAiQueryKey = (propositionId: string, role: string, provider: string) =>
   ["proposition", propositionId, "ai", role, provider] as const;
+export const aiPolicyBuilderStatusQueryKey = ["ai", "policy-builder", "status"] as const;
 
 const parseError = async (response: Response) => {
   try {
@@ -129,6 +131,9 @@ export const createPropositionAiDraft = (
       ...(input.sourcePropositionIds ? { sourcePropositionIds: input.sourcePropositionIds } : {}),
     }),
   });
+
+export const getAiPolicyBuilderStatus = () =>
+  request<PropositionAiPolicyBuilderStatus>("/ai/policy-builder-status", { method: "GET" });
 
 export const submitVote = (propositionId: string, choice: VoteChoice) =>
   request<SubmitVoteResponse>(`/propositions/${encodeURIComponent(propositionId)}/vote`, {

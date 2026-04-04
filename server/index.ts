@@ -15,7 +15,7 @@ import {
   verifySignInCode,
   VotingDatabaseError,
 } from "./db.ts";
-import { getPolicyChatAnswer, getPolicyDraft, getPolicyExplanation } from "./ai.ts";
+import { getPolicyChatAnswer, getPolicyDraft, getPolicyExplanation, reconcileAutomaticAiPolicies } from "./ai.ts";
 import type {
   PropositionAiChatRequest,
   PropositionAiDraftRequest,
@@ -160,11 +160,17 @@ const server = Bun.serve({
           throw new VotingDatabaseError("invalid_request", "Enter valid proposition details.");
         }
 
-        return json(createProposition(db, readSessionCookie(request), body, readClientAddress(request)));
+        const response = json(createProposition(db, readSessionCookie(request), body, readClientAddress(request)));
+        void reconcileAutomaticAiPolicies({ db }).catch((error) => console.error("[ai] automatic publish reconcile failed", error));
+        return response;
       }
 
       if (request.method === "GET" && url.pathname === "/api/propositions/history") {
         return json(listPropositionHistory(db));
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/ai/policy-builder-status") {
+        return json(await reconcileAutomaticAiPolicies({ db }));
       }
 
       if (request.method === "GET" && url.pathname === "/api/propositions/by-path") {
@@ -325,7 +331,17 @@ const server = Bun.serve({
 
 console.log(`better-gov api running on http://127.0.0.1:${server.port}`);
 
+void reconcileAutomaticAiPolicies({ db }).catch((error) =>
+  console.error("[ai] automatic publish reconcile failed", error),
+);
+const aiPublishInterval = setInterval(() => {
+  void reconcileAutomaticAiPolicies({ db }).catch((error) =>
+    console.error("[ai] automatic publish reconcile failed", error),
+  );
+}, 60_000);
+
 const shutdown = () => {
+  clearInterval(aiPublishInterval);
   server.stop(true);
   db.close();
 };

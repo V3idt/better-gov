@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   createProposition,
+  getAutomaticAiPolicyBuilderStatus,
   getPropositionDetail,
   getPropositionVoteHistory,
   getSession,
@@ -15,6 +16,7 @@ import {
   verifySignInCode,
   VotingDatabaseError,
 } from "./db.ts";
+import { reconcileAutomaticAiPolicies } from "./ai.ts";
 
 let dbPath = "";
 let db: ReturnType<typeof openVotingDatabase>;
@@ -174,5 +176,50 @@ describe("voting database", () => {
     expect(defaultList.propositions[0]?.id).not.toBe(personalizedList.propositions[0]?.id);
     expect(personalizedList.propositions[0]?.id).toBe("academic-senate:lecture-recording-default");
     expect(personalizedList.propositions[0]?.personalizationReason).toBeTruthy();
+  });
+
+  it("automatically publishes two AI policies when slots are available", async () => {
+    process.env.BETTER_GOV_GEMINI_API_KEY = "gemini-test-key";
+
+    let fetchCount = 0;
+    const fetchImpl = async () => {
+      fetchCount += 1;
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      title: "Campus Quiet Study Hours",
+                      category: "Student life",
+                      scope: "Libraries and study spaces",
+                      tldr: "Create calmer evening study windows in the busiest campus spaces.",
+                      bullets: [
+                        "Sets a campus-wide quiet-hours baseline.",
+                        "Adds a simple exception workflow.",
+                        "Publishes the schedule in advance.",
+                      ],
+                      rationale: "It extends the strongest closed student-support policies into a broader campus-wide standard.",
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+
+    await reconcileAutomaticAiPolicies({ db, fetchImpl });
+    const status = getAutomaticAiPolicyBuilderStatus(db);
+    const openAiPolicies = listPropositions(db, null).propositions.filter((item) => item.aiGenerated);
+
+    expect(status.activeCount).toBe(2);
+    expect(status.activePolicies.length).toBe(2);
+    expect(openAiPolicies.length).toBe(2);
+    expect(fetchCount).toBe(2);
   });
 });
