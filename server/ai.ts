@@ -448,35 +448,115 @@ const escapeControlCharsInJsonStrings = (raw: string) => {
   return result;
 };
 
-const parseExplanationPayload = (raw: string) => {
-  const jsonText = extractJsonText(raw);
-  try {
-    return explanationSchema.parse(JSON.parse(jsonText) as unknown);
-  } catch {
-    const repaired = escapeControlCharsInJsonStrings(jsonText);
-    return explanationSchema.parse(JSON.parse(repaired) as unknown);
+const balancePossiblyTruncatedJson = (raw: string) => {
+  let result = "";
+  let inString = false;
+  let escaped = false;
+  const stack: Array<"{" | "[" > = [];
+
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+
+    if (inString) {
+      if (escaped) {
+        result += char;
+        escaped = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        result += char;
+        escaped = true;
+        continue;
+      }
+
+      if (char === "\"") {
+        result += char;
+        inString = false;
+        continue;
+      }
+
+      if (char === "\n") {
+        result += "\\n";
+        continue;
+      }
+
+      if (char === "\r") {
+        result += "\\r";
+        continue;
+      }
+
+      if (char === "\t") {
+        result += "\\t";
+        continue;
+      }
+
+      result += char;
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      result += char;
+      continue;
+    }
+
+    if (char === "{" || char === "[") {
+      stack.push(char);
+      result += char;
+      continue;
+    }
+
+    if (char === "}" || char === "]") {
+      const expected = char === "}" ? "{" : "[";
+      const matchIndex = stack.lastIndexOf(expected);
+      if (matchIndex >= 0) {
+        stack.splice(matchIndex, 1);
+      }
+
+      result += char;
+      continue;
+    }
+
+    result += char;
   }
+
+  if (inString) {
+    result += "\"";
+  }
+
+  for (let index = stack.length - 1; index >= 0; index -= 1) {
+    result += stack[index] === "{" ? "}" : "]";
+  }
+
+  return result;
 };
 
-const parseChatPayload = (raw: string) => {
+const parseJsonPayload = <T>(raw: string, schema: z.ZodType<T>) => {
   const jsonText = extractJsonText(raw);
-  try {
-    return chatAnswerSchema.parse(JSON.parse(jsonText) as unknown);
-  } catch {
-    const repaired = escapeControlCharsInJsonStrings(jsonText);
-    return chatAnswerSchema.parse(JSON.parse(repaired) as unknown);
+  const candidates = [
+    jsonText,
+    escapeControlCharsInJsonStrings(jsonText),
+    balancePossiblyTruncatedJson(jsonText),
+    balancePossiblyTruncatedJson(escapeControlCharsInJsonStrings(jsonText)),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      return schema.parse(JSON.parse(candidate) as unknown);
+    } catch {
+      continue;
+    }
   }
+
+  return schema.parse(JSON.parse(candidates[candidates.length - 1]) as unknown);
 };
 
-const parseDraftPayload = (raw: string) => {
-  const jsonText = extractJsonText(raw);
-  try {
-    return draftSchema.parse(JSON.parse(jsonText) as unknown);
-  } catch {
-    const repaired = escapeControlCharsInJsonStrings(jsonText);
-    return draftSchema.parse(JSON.parse(repaired) as unknown);
-  }
-};
+const parseExplanationPayload = (raw: string) => parseJsonPayload(raw, explanationSchema);
+
+const parseChatPayload = (raw: string) => parseJsonPayload(raw, chatAnswerSchema);
+
+const parseDraftPayload = (raw: string) => parseJsonPayload(raw, draftSchema);
 
 const openAiExplanation = async (
   config: ProviderConfig,

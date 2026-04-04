@@ -500,4 +500,44 @@ describe("policy AI explainer", () => {
     expect(result.explanation).toContain("Line one");
     expect(result.explanation).toContain("Line two");
   });
+
+  it("repairs truncated Gemini draft JSON output", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("rahel.bekele"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("rahel.bekele"), codeDelivery.devCode ?? "");
+
+    process.env.BETTER_GOV_GEMINI_API_KEY = "gemini-test-key";
+
+    const result = await getPolicyDraft({
+      db,
+      sessionId: verified.session.id,
+      propositionId: "academic-senate:mandatory-attendance-policy",
+      providerPreference: "gemini",
+      sourcePropositionIds: [
+        "academic-senate:mandatory-attendance-policy",
+        "academic-calendar:spring-reading-week",
+      ],
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      text:
+                        '{"title":"Campus Quiet Study Hours","category":"Student life","scope":"Libraries and study spaces","tldr":"Create calmer evening study windows in the busiest campus spaces.","bullets":["Sets a campus-wide quiet-hours baseline.","Adds a simple exception workflow.","Publishes the schedule in advance."],"rationale":"It extends the strongest closed student-support policies into a broader campus-wide standard.',
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    });
+
+    expect(result.providerUsed).toBe("gemini");
+    expect(result.proposition.title).toBe("Campus Quiet Study Hours");
+    expect(result.proposition.aiGenerated).toBe(true);
+  });
 });
