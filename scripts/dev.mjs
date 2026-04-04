@@ -75,7 +75,7 @@ try {
   process.exit(1);
 }
 
-launch("bun", ["--watch", "server/index.ts"], "api");
+launch("bun", ["server/index.ts"], "api");
 launch("vite", [], "web");
 
 process.on("SIGINT", () => stopAll(0));
