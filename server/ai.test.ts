@@ -254,6 +254,28 @@ describe("policy AI explainer", () => {
     ).rejects.toThrow(VotingDatabaseError);
   });
 
+  it("surfaces quota errors as rate limited responses", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("rahel.bekele"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("rahel.bekele"), codeDelivery.devCode ?? "");
+
+    process.env.BETTER_GOV_GEMINI_API_KEY = "gemini-test-key";
+
+    await expect(
+      getPolicyExplanation({
+        db,
+        sessionId: verified.session.id,
+        propositionId: "campus:transparent-department-budgets",
+        role: "student",
+        providerPreference: "gemini",
+        fetchImpl: async () =>
+          new Response("quota exceeded", {
+            status: 429,
+            headers: { "content-type": "text/plain" },
+          }),
+      }),
+    ).rejects.toThrow("Gemini quota or rate limit reached");
+  });
+
   it("sends the Gemini API key in the request and defaults to gemini-2.5-flash", async () => {
     const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("rahel.bekele"));
     const verified = verifySignInCode(db, emailAtConfiguredDomain("rahel.bekele"), codeDelivery.devCode ?? "");

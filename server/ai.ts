@@ -87,6 +87,31 @@ type BuildChatInput = BuildExplanationInput & {
   question: string;
 };
 
+const providerLabel = (provider: Exclude<AiProviderPreference, "auto">) => {
+  if (provider === "openai") return "OpenAI";
+  if (provider === "gemini") return "Gemini";
+  return "Grok";
+};
+
+const providerRequestError = (
+  provider: Exclude<AiProviderPreference, "auto">,
+  status: number,
+  kind: "explanation" | "chat",
+  message?: string,
+) => {
+  const label = providerLabel(provider);
+
+  if (status === 429) {
+    return new VotingDatabaseError(
+      "rate_limited",
+      `${label} quota or rate limit reached. Please try again later.`,
+    );
+  }
+
+  const suffix = message ? `: ${message}` : ".";
+  return new Error(`${label} ${kind} request failed with status ${status}${suffix}`);
+};
+
 function parseProviderOrder(value: string | undefined) {
   const candidates = (value ?? "")
     .split(",")
@@ -344,7 +369,7 @@ const openAiExplanation = async (
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI request failed with status ${response.status}.`);
+    throw providerRequestError("openai", response.status, "explanation");
   }
 
   const payload = (await response.json()) as {
@@ -395,7 +420,7 @@ const geminiExplanation = async (
 
   if (!response.ok) {
     const message = await response.text().catch(() => "");
-    throw new Error(`Gemini request failed with status ${response.status}${message ? `: ${message}` : "."}`);
+    throw providerRequestError("gemini", response.status, "explanation", message);
   }
 
   const payload = (await response.json()) as {
@@ -444,7 +469,7 @@ const grokExplanation = async (
   });
 
   if (!response.ok) {
-    throw new Error(`Grok request failed with status ${response.status}.`);
+    throw providerRequestError("grok", response.status, "explanation");
   }
 
   const payload = (await response.json()) as {
@@ -484,7 +509,7 @@ const openAiChat = async (
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI request failed with status ${response.status}.`);
+    throw providerRequestError("openai", response.status, "chat");
   }
 
   const payload = (await response.json()) as {
@@ -535,7 +560,7 @@ const geminiChat = async (
 
   if (!response.ok) {
     const message = await response.text().catch(() => "");
-    throw new Error(`Gemini request failed with status ${response.status}${message ? `: ${message}` : "."}`);
+    throw providerRequestError("gemini", response.status, "chat", message);
   }
 
   const payload = (await response.json()) as {
@@ -584,7 +609,7 @@ const grokChat = async (
   });
 
   if (!response.ok) {
-    throw new Error(`Grok request failed with status ${response.status}.`);
+    throw providerRequestError("grok", response.status, "chat");
   }
 
   const payload = (await response.json()) as {
@@ -688,6 +713,7 @@ export const getPolicyExplanation = async ({
 
   const prompt = buildPrompt(detail, role);
   const providers = getProviderCandidates(requestedProvider);
+  let rateLimitedError: VotingDatabaseError | null = null;
 
   for (const provider of providers) {
     try {
@@ -709,8 +735,15 @@ export const getPolicyExplanation = async ({
       storeAiExplanation(db, payload, contentHash, PROMPT_VERSION);
       return payload;
     } catch (error) {
+      if (error instanceof VotingDatabaseError && error.code === "rate_limited") {
+        rateLimitedError = error;
+      }
       console.error(`[ai] ${provider} explanation failed`, error);
     }
+  }
+
+  if (rateLimitedError) {
+    throw rateLimitedError;
   }
 
   throw new VotingDatabaseError(
@@ -751,6 +784,7 @@ export const getPolicyChatAnswer = async ({
 
   const prompt = buildChatPrompt(detail, role, question);
   const providers = getProviderCandidates(requestedProvider);
+  let rateLimitedError: VotingDatabaseError | null = null;
 
   for (const provider of providers) {
     try {
@@ -770,8 +804,15 @@ export const getPolicyChatAnswer = async ({
       storeAiChatAnswer(db, payload, questionHash, contentHash, PROMPT_VERSION);
       return payload;
     } catch (error) {
+      if (error instanceof VotingDatabaseError && error.code === "rate_limited") {
+        rateLimitedError = error;
+      }
       console.error(`[ai] ${provider} chat failed`, error);
     }
+  }
+
+  if (rateLimitedError) {
+    throw rateLimitedError;
   }
 
   throw new VotingDatabaseError(
