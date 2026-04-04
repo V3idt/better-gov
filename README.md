@@ -84,11 +84,11 @@ If email delivery is not configured and dev-code mode is disabled, sign-in code 
 
 The proposition detail page includes an authenticated AI explainer that can use OpenAI, Gemini, or Grok.
 
-For local development, you can leave the AI provider keys empty and the panel will fall back to a deterministic summary if no provider is available.
+For local development, you can leave the AI provider keys empty and the panel will show an error if no provider is available.
 
 To enable live responses:
 
-1. Set `BETTER_GOV_AI_PROVIDER_ORDER` to the provider order you want the server to try.
+1. Set `BETTER_GOV_AI_PROVIDER_ORDER` to the provider order you want the server to try. Gemini is the default first choice.
 2. Set the corresponding API keys for the providers you want to use.
 3. Optionally override the model name for each provider.
 

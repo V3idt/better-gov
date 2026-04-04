@@ -166,12 +166,12 @@ const SkillDetail = () => {
   const activePerson = sessionQuery.data?.authenticated ? sessionQuery.data.person : null;
 
   useEffect(() => {
-    if (!sessionQuery.data?.authenticated) {
+    if (!activePerson) {
       return;
     }
 
-    setAiRole(sessionQuery.data.person.primaryRole === "staff" ? "staff" : "student");
-  }, [sessionQuery.data?.authenticated, sessionQuery.data?.person?.primaryRole]);
+    setAiRole(activePerson.primaryRole === "staff" ? "staff" : "student");
+  }, [activePerson]);
 
   const aiQuery = useQuery({
     queryKey: proposition
@@ -240,7 +240,7 @@ const SkillDetail = () => {
       ? aiQuery.error.message
       : aiQuery.error instanceof Error
         ? aiQuery.error.message
-        : "";
+        : "We couldn't reach the AI provider. Try again once the provider is configured.";
 
   return (
     <div className="min-h-screen bg-background text-foreground font-mono">

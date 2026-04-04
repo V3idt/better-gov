@@ -17,7 +17,7 @@ import type {
 import { z } from "zod";
 
 const PROMPT_VERSION = "2026-04-04-v1";
-const DEFAULT_PROVIDER_ORDER: Exclude<AiProviderPreference, "auto">[] = ["openai", "gemini", "grok"];
+const DEFAULT_PROVIDER_ORDER: Exclude<AiProviderPreference, "auto">[] = ["gemini", "openai", "grok"];
 
 const explanationSchema = z.object({
   explanation: z.string().min(1),
@@ -25,6 +25,31 @@ const explanationSchema = z.object({
   disadvantages: z.array(z.string().min(1)).min(1).max(5),
   impact: z.string().min(1),
 });
+
+const explanationJsonSchema = {
+  type: "object",
+  properties: {
+    explanation: {
+      type: "string",
+    },
+    advantages: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    disadvantages: {
+      type: "array",
+      items: {
+        type: "string",
+      },
+    },
+    impact: {
+      type: "string",
+    },
+  },
+  required: ["explanation", "advantages", "disadvantages", "impact"],
+} as const;
 
 type ProviderConfig = {
   provider: Exclude<AiProviderPreference, "auto">;
@@ -57,11 +82,19 @@ const normalizeProviderPreference = (
 ): AiProviderPreference => providerPreference ?? "auto";
 
 const getProviderCandidates = (providerPreference: AiProviderPreference) => {
+  const configuredProviders = new Set(
+    (["openai", "gemini", "grok"] as const).filter((provider) => getProviderConfig(provider) !== null),
+  );
+
   if (providerPreference === "auto") {
-    return PROVIDER_ORDER;
+    return PROVIDER_ORDER.filter((provider) => configuredProviders.has(provider));
   }
 
-  return [providerPreference, ...PROVIDER_ORDER.filter((provider) => provider !== providerPreference)];
+  return [
+    ...[providerPreference, ...PROVIDER_ORDER.filter((provider) => provider !== providerPreference)].filter(
+      (provider) => configuredProviders.has(provider),
+    ),
+  ];
 };
 
 const getProviderConfig = (provider: Exclude<AiProviderPreference, "auto">): ProviderConfig | null => {
@@ -73,7 +106,7 @@ const getProviderConfig = (provider: Exclude<AiProviderPreference, "auto">): Pro
 
   if (provider === "gemini") {
     const apiKey = process.env.BETTER_GOV_GEMINI_API_KEY?.trim() ?? "";
-    const model = process.env.BETTER_GOV_GEMINI_MODEL?.trim() ?? "gemini-2.0-flash";
+    const model = process.env.BETTER_GOV_GEMINI_MODEL?.trim() ?? "gemini-2.5-flash";
     return apiKey ? { provider, model, apiKey } : null;
   }
 
@@ -159,10 +192,65 @@ const extractJsonText = (raw: string) => {
   return trimmed;
 };
 
+const escapeControlCharsInJsonStrings = (raw: string) => {
+  let result = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+
+    if (inString) {
+      if (escaped) {
+        result += char;
+        escaped = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        result += char;
+        escaped = true;
+        continue;
+      }
+
+      if (char === "\"") {
+        result += char;
+        inString = false;
+        continue;
+      }
+
+      if (char === "\n") {
+        result += "\\n";
+        continue;
+      }
+
+      if (char === "\r") {
+        result += "\\r";
+        continue;
+      }
+
+      if (char === "\t") {
+        result += "\\t";
+        continue;
+      }
+    } else if (char === "\"") {
+      inString = true;
+    }
+
+    result += char;
+  }
+
+  return result;
+};
+
 const parseExplanationPayload = (raw: string) => {
   const jsonText = extractJsonText(raw);
-  const parsed = JSON.parse(jsonText) as unknown;
-  return explanationSchema.parse(parsed);
+  try {
+    return explanationSchema.parse(JSON.parse(jsonText) as unknown);
+  } catch {
+    const repaired = escapeControlCharsInJsonStrings(jsonText);
+    return explanationSchema.parse(JSON.parse(repaired) as unknown);
+  }
 };
 
 const openAiExplanation = async (
@@ -210,11 +298,17 @@ const geminiExplanation = async (
   prompt: string,
   fetchImpl: typeof fetch,
 ) => {
+  const url = new URL(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`,
+  );
+  url.searchParams.set("key", config.apiKey);
+
   const response = await fetchImpl(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent?key=${encodeURIComponent(config.apiKey)}`,
+    url.toString(),
     {
       method: "POST",
       headers: {
+        "x-goog-api-key": config.apiKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -227,13 +321,16 @@ const geminiExplanation = async (
         generationConfig: {
           temperature: 0.2,
           maxOutputTokens: 1024,
+          responseMimeType: "application/json",
+          responseJsonSchema: explanationJsonSchema,
         },
       }),
     },
   );
 
   if (!response.ok) {
-    throw new Error(`Gemini request failed with status ${response.status}.`);
+    const message = await response.text().catch(() => "");
+    throw new Error(`Gemini request failed with status ${response.status}${message ? `: ${message}` : "."}`);
   }
 
   const payload = (await response.json()) as {
@@ -317,34 +414,6 @@ const providerExplanation = async (
   return grokExplanation(config, prompt, fetchImpl);
 };
 
-const deterministicFallback = (
-  detail: PropositionDetail,
-  role: AiAudienceRole,
-  requestedProvider: AiProviderPreference,
-): Omit<PropositionAiExplanation, "providerUsed" | "cached" | "generatedAt"> => {
-  const audience = role === "student" ? "students" : "staff";
-  const otherAudience = role === "student" ? "staff" : "students";
-
-  return {
-    propositionId: detail.id,
-    role,
-    requestedProvider,
-    explanation: `${detail.title} is a ${detail.category.toLowerCase()} proposal for ${detail.jurisdiction}. The brief says it is about ${detail.scope.toLowerCase()}, and the summary describes it as: ${detail.tldr}. A careful read suggests the main tradeoff is between the policy goals and the practical cost or disruption described in the brief.`,
-    advantages: [
-      `May help ${audience} if the policy's stated goal is achieved.`,
-      "Uses the policy's own summary and review checks to surface the main tradeoffs.",
-      "Gives a plain-language starting point before reading the full brief.",
-    ],
-    disadvantages: [
-      `Could still leave important details unclear if the brief is long or technical.`,
-      `May affect ${otherAudience} differently than ${audience}, depending on implementation.`,
-      "The model should be treated as an aid, not a final authority.",
-    ],
-    impact: `For ${audience}, the likely impact is tied to the policy's stated scope: ${detail.scope}. For ${otherAudience}, the effect may be indirect unless the brief explicitly says otherwise.`,
-    sourcesUsed: sourcesUsedForDetail(detail),
-  };
-};
-
 const buildResponse = (
   explanation: Omit<PropositionAiExplanation, "cached" | "generatedAt">,
   providerUsed: AiProviderUsed,
@@ -403,10 +472,12 @@ export const getPolicyExplanation = async ({
       storeAiExplanation(db, payload, contentHash, PROMPT_VERSION);
       return payload;
     } catch (error) {
-      // try the next configured provider
-      void error;
+      console.error(`[ai] ${provider} explanation failed`, error);
     }
   }
 
-  return buildResponse(deterministicFallback(detail, role, requestedProvider), "fallback", false);
+  throw new VotingDatabaseError(
+    "delivery_failed",
+    "Unable to reach an AI provider. Please ensure at least one provider key is configured.",
+  );
 };

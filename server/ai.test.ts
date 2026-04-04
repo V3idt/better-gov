@@ -167,20 +167,107 @@ describe("policy AI explainer", () => {
     expect(fetchCount).toBe(1);
   });
 
-  it("returns a deterministic fallback when no provider is configured", async () => {
+  it("fails when no provider is configured", async () => {
     const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("hana.tadesse"));
     const verified = verifySignInCode(db, emailAtConfiguredDomain("hana.tadesse"), codeDelivery.devCode ?? "");
+
+    await expect(
+      getPolicyExplanation({
+        db,
+        sessionId: verified.session.id,
+        propositionId: "campus:transparent-department-budgets",
+        role: "staff",
+        providerPreference: "auto",
+      }),
+    ).rejects.toThrow(VotingDatabaseError);
+  });
+
+  it("sends the Gemini API key in the request and defaults to gemini-2.5-flash", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("rahel.bekele"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("rahel.bekele"), codeDelivery.devCode ?? "");
+
+    process.env.BETTER_GOV_GEMINI_API_KEY = "gemini-test-key";
+    delete process.env.BETTER_GOV_GEMINI_MODEL;
+
+    let seenUrl = "";
+    let seenApiKey = "";
+    const result = await getPolicyExplanation({
+      db,
+      sessionId: verified.session.id,
+      propositionId: "campus:transparent-department-budgets",
+      role: "student",
+      providerPreference: "gemini",
+      fetchImpl: async (input) => {
+        seenUrl = typeof input === "string" ? input : input.toString();
+        const parsed = new URL(seenUrl);
+        seenApiKey = parsed.searchParams.get("key") ?? "";
+
+        expect(seenUrl).toContain("generativelanguage.googleapis.com");
+        expect(seenUrl).toContain("gemini-2.5-flash");
+        expect(seenApiKey).toBe("gemini-test-key");
+
+        return new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      text: JSON.stringify({
+                        explanation: "Gemini explanation",
+                        advantages: ["clear"],
+                        disadvantages: ["limited"],
+                        impact: "students benefit",
+                      }),
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    });
+
+    expect(result.providerUsed).toBe("gemini");
+    expect(result.explanation).toBe("Gemini explanation");
+  });
+
+  it("repairs malformed newlines in Gemini JSON output", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("rahel.bekele"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("rahel.bekele"), codeDelivery.devCode ?? "");
+
+    process.env.BETTER_GOV_GEMINI_API_KEY = "gemini-test-key";
 
     const result = await getPolicyExplanation({
       db,
       sessionId: verified.session.id,
       propositionId: "campus:transparent-department-budgets",
-      role: "staff",
-      providerPreference: "auto",
+      role: "student",
+      providerPreference: "gemini",
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      text:
+                        '{\n  "explanation": "Line one\nLine two",\n  "advantages": ["a"],\n  "disadvantages": ["b"],\n  "impact": "c"\n}',
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
     });
 
-    expect(result.providerUsed).toBe("fallback");
-    expect(result.cached).toBe(false);
-    expect(result.explanation.length).toBeGreaterThan(0);
+    expect(result.providerUsed).toBe("gemini");
+    expect(result.explanation).toContain("Line one");
+    expect(result.explanation).toContain("Line two");
   });
 });
