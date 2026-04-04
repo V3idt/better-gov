@@ -1,10 +1,12 @@
 import Navbar from "@/components/Navbar";
 import { Link, useParams } from "react-router-dom";
-import { Copy, FileText } from "lucide-react";
+import { ChevronDown, Copy, FileText, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import AccountDialog from "@/components/AccountDialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,18 +17,31 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   formatCompactCount,
   formatSupportPercent,
+  type AiAudienceRole,
+  type AiProviderPreference,
   propositionPathFromParts,
   type PropositionReviewCheck,
   type VoteChoice,
   VotingApiError,
 } from "@/lib/voting";
 import {
+  getPropositionAiExplanation,
   getPropositionByPath,
   getSession,
   propositionHistoryQueryKey,
+  propositionAiQueryKey,
   propositionListQueryKey,
   sessionQueryKey,
   submitVote,
@@ -68,6 +83,16 @@ const reviewLabel = (name: string) => {
   if (name === "Delivery") return "Delivery risk";
   return name;
 };
+
+const aiProviderLabel = (provider: AiProviderPreference | "fallback") => {
+  if (provider === "openai") return "OpenAI";
+  if (provider === "gemini") return "Gemini";
+  if (provider === "grok") return "Grok";
+  if (provider === "fallback") return "Fallback";
+  return "Auto";
+};
+
+const aiRoleLabel = (role: AiAudienceRole) => (role === "student" ? "Student" : "Staff");
 
 const splitPillClass = (label: string) => {
   if (label === "Approve") return "text-green-500 bg-green-500/10";
@@ -112,6 +137,9 @@ const SkillDetail = () => {
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [pendingVote, setPendingVote] = useState<VoteChoice | null>(null);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiRole, setAiRole] = useState<AiAudienceRole>("student");
+  const [aiProvider, setAiProvider] = useState<AiProviderPreference>("auto");
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -134,6 +162,35 @@ const SkillDetail = () => {
   const proposition = propositionQuery.data?.proposition;
   const isVotable =
     proposition?.status === "open" || proposition?.status === "closing_soon";
+  const isAuthenticated = sessionQuery.data?.authenticated === true;
+  const activePerson = sessionQuery.data?.authenticated ? sessionQuery.data.person : null;
+
+  useEffect(() => {
+    if (!sessionQuery.data?.authenticated) {
+      return;
+    }
+
+    setAiRole(sessionQuery.data.person.primaryRole === "staff" ? "staff" : "student");
+  }, [sessionQuery.data?.authenticated, sessionQuery.data?.person.primaryRole]);
+
+  const aiQuery = useQuery({
+    queryKey: proposition
+      ? propositionAiQueryKey(proposition.id, aiRole, aiProvider)
+      : ["proposition", "ai", "loading"] as const,
+    queryFn: () => {
+      if (!proposition) {
+        throw new Error("Proposition not loaded.");
+      }
+
+      return getPropositionAiExplanation(proposition.id, {
+        role: aiRole,
+        provider: aiProvider,
+      });
+    },
+    enabled: Boolean(proposition) && aiOpen && isAuthenticated,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const submitMutation = useMutation({
     mutationFn: (choice: VoteChoice) => {
       if (!proposition) {
@@ -162,9 +219,9 @@ const SkillDetail = () => {
 
   const currentVote = proposition?.myVote ?? null;
   const pendingVoteLabel = pendingVote ? pendingVote.charAt(0).toUpperCase() + pendingVote.slice(1) : "";
+  const closesIn = proposition ? formatTimeLeft(proposition.closesAt, currentTime) : "";
   const isAuthenticated = sessionQuery.data?.authenticated === true;
   const activePerson = sessionQuery.data?.authenticated ? sessionQuery.data.person : null;
-  const closesIn = proposition ? formatTimeLeft(proposition.closesAt, currentTime) : "";
 
   const errorMessage =
     submitMutation.error instanceof VotingApiError
@@ -179,6 +236,12 @@ const SkillDetail = () => {
       ? propositionQuery.error.message
       : propositionQuery.error instanceof Error
         ? propositionQuery.error.message
+        : "";
+  const aiErrorMessage =
+    aiQuery.error instanceof VotingApiError
+      ? aiQuery.error.message
+      : aiQuery.error instanceof Error
+        ? aiQuery.error.message
         : "";
 
   return (
@@ -313,6 +376,168 @@ const SkillDetail = () => {
                     </div>
                   )}
                 </div>
+
+                <Collapsible open={aiOpen} onOpenChange={setAiOpen}>
+                  <Card className="mb-6 border-border bg-secondary/20">
+                    <CardHeader className="space-y-4 border-b border-border p-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                          <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-[0.16em]">
+                            <Sparkles className="h-4 w-4" aria-hidden="true" />
+                            AI explainer
+                          </CardTitle>
+                          <CardDescription className="max-w-2xl leading-relaxed">
+                            Get a plain-language explanation, the upside, the downside, and the likely impact for a student or staff view.
+                          </CardDescription>
+                        </div>
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-border bg-background/60 font-mono text-xs uppercase tracking-[0.16em] text-foreground hover:bg-secondary"
+                          >
+                            <span>{aiOpen ? "Hide" : "Open"}</span>
+                            <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${aiOpen ? "rotate-180" : ""}`} />
+                          </Button>
+                        </CollapsibleTrigger>
+                      </div>
+                    </CardHeader>
+                    <CollapsibleContent>
+                      <CardContent className="space-y-5 p-5">
+                        {isAuthenticated ? (
+                          <>
+                            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_220px]">
+                              <div className="space-y-2">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Audience view</p>
+                                <ToggleGroup
+                                  type="single"
+                                  value={aiRole}
+                                  onValueChange={(value) => {
+                                    if (value === "student" || value === "staff") {
+                                      setAiRole(value);
+                                    }
+                                  }}
+                                  variant="outline"
+                                  className="justify-start"
+                                >
+                                  <ToggleGroupItem value="student" className="px-4 font-mono text-xs uppercase tracking-[0.16em]">
+                                    Student
+                                  </ToggleGroupItem>
+                                  <ToggleGroupItem value="staff" className="px-4 font-mono text-xs uppercase tracking-[0.16em]">
+                                    Staff
+                                  </ToggleGroupItem>
+                                </ToggleGroup>
+                              </div>
+
+                              <div className="space-y-2">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Provider</p>
+                                <Select value={aiProvider} onValueChange={(value) => setAiProvider(value as AiProviderPreference)}>
+                                  <SelectTrigger className="border-border bg-background/60 font-mono text-xs uppercase tracking-[0.16em]">
+                                    <SelectValue placeholder="Choose provider" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="auto">Auto</SelectItem>
+                                    <SelectItem value="openai">OpenAI</SelectItem>
+                                    <SelectItem value="gemini">Gemini</SelectItem>
+                                    <SelectItem value="grok">Grok</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+
+                            {aiQuery.isLoading ? (
+                              <div className="space-y-3 rounded border border-border bg-background/60 p-4 text-sm text-muted-foreground">
+                                <div className="h-4 w-40 animate-pulse rounded bg-muted/40" />
+                                <div className="h-3 w-full animate-pulse rounded bg-muted/30" />
+                                <div className="h-3 w-11/12 animate-pulse rounded bg-muted/30" />
+                                <div className="h-3 w-10/12 animate-pulse rounded bg-muted/30" />
+                              </div>
+                            ) : aiQuery.isError ? (
+                              <div className="rounded border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-500">
+                                {aiErrorMessage || "Could not generate an explanation right now."}
+                              </div>
+                            ) : aiQuery.data ? (
+                              <div className="space-y-4">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
+                                    {aiProviderLabel(aiQuery.data.providerUsed)}
+                                  </Badge>
+                                  <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
+                                    {aiRoleLabel(aiQuery.data.role)}
+                                  </Badge>
+                                  <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
+                                    {aiQuery.data.cached ? "cached" : "live"}
+                                  </Badge>
+                                </div>
+
+                                <div className="rounded border border-border bg-background/60 p-4">
+                                  <p className="mb-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">Explanation</p>
+                                  <p className="text-sm leading-relaxed text-foreground">{aiQuery.data.explanation}</p>
+                                </div>
+
+                                <div className="grid gap-4 lg:grid-cols-2">
+                                  <div className="rounded border border-border bg-background/60 p-4">
+                                    <p className="mb-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">Advantages</p>
+                                    <ul className="space-y-2">
+                                      {aiQuery.data.advantages.map((item) => (
+                                        <li key={item} className="flex gap-2 text-sm text-foreground">
+                                          <span className="mt-1.5 h-1 w-1 rounded-full bg-foreground/60" />
+                                          <span>{item}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+
+                                  <div className="rounded border border-border bg-background/60 p-4">
+                                    <p className="mb-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">Disadvantages</p>
+                                    <ul className="space-y-2">
+                                      {aiQuery.data.disadvantages.map((item) => (
+                                        <li key={item} className="flex gap-2 text-sm text-foreground">
+                                          <span className="mt-1.5 h-1 w-1 rounded-full bg-foreground/60" />
+                                          <span>{item}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                </div>
+
+                                <div className="rounded border border-border bg-background/60 p-4">
+                                  <p className="mb-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">Impact</p>
+                                  <p className="text-sm leading-relaxed text-foreground">{aiQuery.data.impact}</p>
+                                </div>
+
+                                <div className="rounded border border-border bg-background/60 p-4">
+                                  <p className="mb-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">Sources used</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {aiQuery.data.sourcesUsed.map((source) => (
+                                      <Badge key={source} variant="outline" className="border-border bg-secondary/30 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                                        {source}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <div className="rounded border border-border bg-background/60 p-4">
+                            <p className="text-sm leading-relaxed text-muted-foreground">
+                              Sign in with your university account to use the AI explainer. It stays behind the same session gate as voting.
+                            </p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="mt-4 border-border bg-secondary/50 font-mono text-xs uppercase tracking-[0.16em] text-foreground hover:bg-secondary"
+                              onClick={() => setAccountDialogOpen(true)}
+                            >
+                              Sign in to explain
+                            </Button>
+                          </div>
+                        )}
+                      </CardContent>
+                    </CollapsibleContent>
+                  </Card>
+                </Collapsible>
 
                 <div className="mb-6 rounded-lg border border-border p-5">
                   <h3 className="mb-3 text-xs uppercase tracking-wider text-muted-foreground">tl;dr</h3>

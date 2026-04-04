@@ -1,5 +1,7 @@
 import type {
   PropositionDetailResponse,
+  PropositionAiExplanationRequest,
+  PropositionAiExplanationResponse,
   PropositionHistoryResponse,
   PropositionListResponse,
   RequestSignInCodeInput,
@@ -17,6 +19,8 @@ const API_BASE = "/api";
 export const sessionQueryKey = ["session"] as const;
 export const propositionListQueryKey = ["propositions"] as const;
 export const propositionHistoryQueryKey = ["propositions", "history"] as const;
+export const propositionAiQueryKey = (propositionId: string, role: string, provider: string) =>
+  ["proposition", propositionId, "ai", role, provider] as const;
 
 const parseError = async (response: Response) => {
   try {
@@ -65,6 +69,18 @@ export const listPropositionHistory = () => request<PropositionHistoryResponse>(
 
 export const getPropositionByPath = (path: string) =>
   request<PropositionDetailResponse>(`/propositions/by-path?path=${encodeURIComponent(path)}`, { method: "GET" });
+
+export const getPropositionAiExplanation = (
+  propositionId: string,
+  input: PropositionAiExplanationRequest,
+) =>
+  request<PropositionAiExplanationResponse>(`/propositions/${encodeURIComponent(propositionId)}/explanation`, {
+    method: "POST",
+    body: JSON.stringify({
+      role: input.role,
+      ...(input.provider ? { provider: input.provider } : {}),
+    }),
+  });
 
 export const submitVote = (propositionId: string, choice: VoteChoice) =>
   request<SubmitVoteResponse>(`/propositions/${encodeURIComponent(propositionId)}/vote`, {

@@ -9,6 +9,7 @@ This version of the product is currently framed around university governance. Th
 - A minimalist landing page introducing the platform
 - An open proposition list backed by the API
 - A proposition detail page with a `tl;dr`, full brief, live vote actions, and current split
+- An authenticated AI explainer on proposition detail pages with student/staff views and provider fallback
 - A history page for closed votes and outcomes
 - A lightweight branding system aligned with the current dark, restrained visual style
 
@@ -78,10 +79,25 @@ For real email delivery:
 
 If email delivery is not configured and dev-code mode is disabled, sign-in code requests will fail by design.
 
+## AI Explainer Setup
+
+The proposition detail page includes an authenticated AI explainer that can use OpenAI, Gemini, or Grok.
+
+For local development, you can leave the AI provider keys empty and the panel will fall back to a deterministic summary if no provider is available.
+
+To enable live responses:
+
+1. Set `BETTER_GOV_AI_PROVIDER_ORDER` to the provider order you want the server to try.
+2. Set the corresponding API keys for the providers you want to use.
+3. Optionally override the model name for each provider.
+
+The UI lets the signed-in user choose a provider and a student/staff perspective. The server still falls back through the configured order if the selected provider is unavailable.
+
 ## Notes
 
 - Proposition list data, proposition detail data, review checks, and vote aggregates are served from the Bun + SQLite backend.
 - The vote flow requires an authenticated university account and stores votes with a unique `(policy_id, person_id)` constraint.
+- The AI explainer is also gated by the session cookie and caches outputs by proposition content, audience role, and provider preference.
 - The API server seeds the proposition catalog and a small sample university roster into SQLite on startup.
 - The frontend no longer reads proposition detail or history data directly from hardcoded page-level arrays.
 

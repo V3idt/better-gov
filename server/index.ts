@@ -13,7 +13,13 @@ import {
   verifySignInCode,
   VotingDatabaseError,
 } from "./db.ts";
-import type { RequestSignInCodeInput, VerifySignInCodeInput, VoteChoice } from "../src/lib/voting.ts";
+import { getPolicyExplanation } from "./ai.ts";
+import type {
+  PropositionAiExplanationRequest,
+  RequestSignInCodeInput,
+  VerifySignInCodeInput,
+  VoteChoice,
+} from "../src/lib/voting.ts";
 
 const port = Number(process.env.BETTER_GOV_API_PORT ?? "8787");
 const db = openVotingDatabase();
@@ -122,6 +128,34 @@ const server = Bun.serve({
         }
 
         return json(getPropositionDetail(db, readSessionCookie(request), propositionPath));
+      }
+
+      const propositionExplainMatch = url.pathname.match(/^\/api\/propositions\/([^/]+)\/explanation$/);
+      if (propositionExplainMatch && request.method === "POST") {
+        const body = await parseJson<PropositionAiExplanationRequest>(request);
+        if (body.role !== "student" && body.role !== "staff") {
+          throw new VotingDatabaseError("invalid_request", "Choose a valid audience role.");
+        }
+
+        if (
+          body.provider !== undefined &&
+          body.provider !== "auto" &&
+          body.provider !== "openai" &&
+          body.provider !== "gemini" &&
+          body.provider !== "grok"
+        ) {
+          throw new VotingDatabaseError("invalid_request", "Choose a valid AI provider.");
+        }
+
+        return json(
+          await getPolicyExplanation({
+            db,
+            sessionId: readSessionCookie(request),
+            propositionId: decodeURIComponent(propositionExplainMatch[1]),
+            role: body.role,
+            providerPreference: body.provider,
+          }),
+        );
       }
 
       const propositionVoteMatch = url.pathname.match(/^\/api\/propositions\/([^/]+)\/vote$/);

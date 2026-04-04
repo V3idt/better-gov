@@ -2,6 +2,9 @@ export type VoteChoice = "approve" | "reject" | "abstain";
 export type ReviewStatus = "PASS" | "WARN" | "FAIL";
 export type PropositionStatus = "open" | "closing_soon" | "draft" | "closed";
 export type PropositionOutcome = "APPROVED" | "REJECTED" | "TIED" | "NO_RESULT";
+export type AiAudienceRole = "student" | "staff";
+export type AiProviderPreference = "auto" | "openai" | "gemini" | "grok";
+export type AiProviderUsed = "openai" | "gemini" | "grok" | "fallback";
 
 export type Person = {
   id: string;
@@ -68,6 +71,20 @@ export type PropositionHistoryItem = PropositionSummary & {
   outcome: PropositionOutcome;
 };
 
+export type PropositionAiExplanation = {
+  propositionId: string;
+  role: AiAudienceRole;
+  requestedProvider: AiProviderPreference;
+  providerUsed: AiProviderUsed;
+  cached: boolean;
+  generatedAt: string;
+  explanation: string;
+  advantages: string[];
+  disadvantages: string[];
+  impact: string;
+  sourcesUsed: string[];
+};
+
 export type PropositionListResponse = {
   propositions: PropositionSummary[];
 };
@@ -79,6 +96,13 @@ export type PropositionHistoryResponse = {
 export type PropositionDetailResponse = {
   proposition: PropositionDetail;
 };
+
+export type PropositionAiExplanationRequest = {
+  role: AiAudienceRole;
+  provider?: AiProviderPreference;
+};
+
+export type PropositionAiExplanationResponse = PropositionAiExplanation;
 
 export type AuthenticatedSessionResponse = {
   authenticated: true;

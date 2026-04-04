@@ -89,6 +89,20 @@ CREATE TABLE IF NOT EXISTS email_verification_codes (
   FOREIGN KEY (university_email) REFERENCES roster_members(university_email) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS ai_explanations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  policy_id TEXT NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+  audience_role TEXT NOT NULL CHECK (audience_role IN ('student', 'staff')),
+  requested_provider TEXT NOT NULL CHECK (requested_provider IN ('auto', 'openai', 'gemini', 'grok')),
+  provider_used TEXT NOT NULL CHECK (provider_used IN ('openai', 'gemini', 'grok', 'fallback')),
+  content_hash TEXT NOT NULL,
+  prompt_version TEXT NOT NULL,
+  explanation_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(policy_id, audience_role, requested_provider, content_hash, prompt_version)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_person_id ON sessions(person_id);
 CREATE INDEX IF NOT EXISTS idx_votes_policy_id ON votes(policy_id);
 CREATE INDEX IF NOT EXISTS idx_votes_person_id ON votes(person_id);
@@ -97,3 +111,4 @@ CREATE INDEX IF NOT EXISTS idx_proposition_bullets_policy_id ON proposition_bull
 CREATE INDEX IF NOT EXISTS idx_proposition_checks_policy_id ON proposition_review_checks(policy_id);
 CREATE INDEX IF NOT EXISTS idx_roster_members_email ON roster_members(university_email);
 CREATE INDEX IF NOT EXISTS idx_email_codes_email_created ON email_verification_codes(university_email, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_explanations_policy_role_provider ON ai_explanations(policy_id, audience_role, requested_provider);

@@ -5,6 +5,9 @@ import { dirname } from "node:path";
 import { EmailDeliveryError, sendSignInCodeEmail } from "./email.ts";
 import { propositionSeeds } from "./proposition-seeds.ts";
 import type {
+  AiAudienceRole,
+  AiProviderPreference,
+  PropositionAiExplanation,
   Person,
   PropositionDetail,
   PropositionDetailResponse,
@@ -134,6 +137,19 @@ type EmailCodeRow = {
   expires_at: string;
   consumed_at: string | null;
   failed_attempts: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type AiExplanationRow = {
+  id: number;
+  policy_id: string;
+  audience_role: AiAudienceRole;
+  requested_provider: AiProviderPreference;
+  provider_used: PropositionAiExplanation["providerUsed"];
+  content_hash: string;
+  prompt_version: string;
+  explanation_json: string;
   created_at: string;
   updated_at: string;
 };
@@ -328,6 +344,26 @@ const voteSql = `
   DO UPDATE SET choice = excluded.choice, updated_at = excluded.updated_at
 `;
 
+const aiExplanationSql = `
+  INSERT INTO ai_explanations (
+    policy_id,
+    audience_role,
+    requested_provider,
+    provider_used,
+    content_hash,
+    prompt_version,
+    explanation_json,
+    created_at,
+    updated_at
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(policy_id, audience_role, requested_provider, content_hash, prompt_version)
+  DO UPDATE SET
+    provider_used = excluded.provider_used,
+    explanation_json = excluded.explanation_json,
+    updated_at = excluded.updated_at
+`;
+
 const loadPerson = (db: Database, personId: string) => {
   const row = db
     .prepare(
@@ -403,6 +439,51 @@ const loadPropositionByPath = (db: Database, propositionPath: string) => {
     .get(propositionPath) as PropositionRow | undefined;
 
   return row ?? null;
+};
+
+const loadAiExplanation = (
+  db: Database,
+  propositionId: string,
+  audienceRole: AiAudienceRole,
+  requestedProvider: AiProviderPreference,
+  contentHash: string,
+  promptVersion: string,
+) => {
+  const row = db
+    .prepare(
+      `
+        SELECT id, policy_id, audience_role, requested_provider, provider_used, content_hash, prompt_version, explanation_json, created_at, updated_at
+        FROM ai_explanations
+        WHERE policy_id = ? AND audience_role = ? AND requested_provider = ? AND content_hash = ? AND prompt_version = ?
+      `,
+    )
+    .get(propositionId, audienceRole, requestedProvider, contentHash, promptVersion) as AiExplanationRow | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  return JSON.parse(row.explanation_json) as PropositionAiExplanation;
+};
+
+const saveAiExplanation = (
+  db: Database,
+  explanation: PropositionAiExplanation,
+  contentHash: string,
+  promptVersion: string,
+) => {
+  const timestamp = now();
+  db.prepare(aiExplanationSql).run(
+    explanation.propositionId,
+    explanation.role,
+    explanation.requestedProvider,
+    explanation.providerUsed,
+    contentHash,
+    promptVersion,
+    JSON.stringify(explanation),
+    timestamp,
+    timestamp,
+  );
 };
 
 const listPropositionRows = (db: Database, lifecycleStatus?: "open" | "closed" | "draft") =>
@@ -949,6 +1030,45 @@ export const getPropositionDetail = (
     ),
   };
 };
+
+export const getPropositionDetailById = (
+  db: Database,
+  sessionId: string | null,
+  propositionId: string,
+): PropositionDetailResponse => {
+  const proposition = loadPropositionById(db, propositionId);
+  if (!proposition) {
+    throw new VotingDatabaseError("proposition_not_found", "Proposition not found.");
+  }
+
+  const session = getResolvedSession(db, sessionId);
+  const counts = loadVoteCounts(db, proposition.id);
+
+  return {
+    proposition: toPropositionDetail(
+      db,
+      proposition,
+      counts,
+      session ? loadVote(db, proposition.id, session.person.id) : null,
+    ),
+  };
+};
+
+export const getCachedAiExplanation = (
+  db: Database,
+  propositionId: string,
+  audienceRole: AiAudienceRole,
+  requestedProvider: AiProviderPreference,
+  contentHash: string,
+  promptVersion: string,
+) => loadAiExplanation(db, propositionId, audienceRole, requestedProvider, contentHash, promptVersion);
+
+export const storeAiExplanation = (
+  db: Database,
+  explanation: PropositionAiExplanation,
+  contentHash: string,
+  promptVersion: string,
+) => saveAiExplanation(db, explanation, contentHash, promptVersion);
 
 export const submitVote = (
   db: Database,
