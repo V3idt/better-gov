@@ -131,8 +131,8 @@ const PropositionComposer = () => {
       <AccountDialog open={accountDialogOpen} onOpenChange={setAccountDialogOpen} />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="border-border bg-background text-foreground sm:max-w-2xl">
-          <DialogHeader className="space-y-3 text-left">
+        <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden border-border bg-background p-0 text-foreground sm:max-h-[min(88vh,820px)] sm:max-w-2xl">
+          <DialogHeader className="space-y-3 border-b border-border px-6 pb-4 pt-6 text-left">
             <DialogTitle className="font-mono text-base uppercase tracking-[0.18em]">Post proposition</DialogTitle>
             <DialogDescription className="max-w-xl text-sm leading-relaxed text-muted-foreground">
               New submissions start as draft. They show up in the draft view immediately, but they do not open for voting until a review workflow exists.
@@ -140,115 +140,119 @@ const PropositionComposer = () => {
           </DialogHeader>
 
           <form
-            className="space-y-5"
+            className="flex min-h-0 flex-1 flex-col"
             onSubmit={(event) => {
               event.preventDefault();
               createMutation.mutate();
             }}
           >
-            <div className="grid gap-5 sm:grid-cols-2">
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="proposition-title" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  Title
-                </Label>
-                <Input
-                  id="proposition-title"
-                  value={form.title}
-                  onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
-                  maxLength={120}
-                  placeholder="Keep the library open later during exams"
-                  className="border-border bg-secondary/30 font-mono text-sm"
-                />
-              </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="proposition-title" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    Title
+                  </Label>
+                  <Input
+                    id="proposition-title"
+                    value={form.title}
+                    onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+                    maxLength={120}
+                    placeholder="Keep the library open later during exams"
+                    className="border-border bg-secondary/30 font-mono text-sm"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="proposition-category" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  Category
-                </Label>
-                <Input
-                  id="proposition-category"
-                  value={form.category}
-                  onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-                  maxLength={48}
-                  placeholder="Student life"
-                  className="border-border bg-secondary/30 font-mono text-sm"
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="proposition-category" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    Category
+                  </Label>
+                  <Input
+                    id="proposition-category"
+                    value={form.category}
+                    onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
+                    maxLength={48}
+                    placeholder="Student life"
+                    className="border-border bg-secondary/30 font-mono text-sm"
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="proposition-scope" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  Scope
-                </Label>
-                <Input
-                  id="proposition-scope"
-                  value={form.scope}
-                  onChange={(event) => setForm((current) => ({ ...current, scope: event.target.value }))}
-                  maxLength={80}
-                  placeholder="University-wide"
-                  className="border-border bg-secondary/30 font-mono text-sm"
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="proposition-scope" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    Scope
+                  </Label>
+                  <Input
+                    id="proposition-scope"
+                    value={form.scope}
+                    onChange={(event) => setForm((current) => ({ ...current, scope: event.target.value }))}
+                    maxLength={80}
+                    placeholder="University-wide"
+                    className="border-border bg-secondary/30 font-mono text-sm"
+                  />
+                </div>
 
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="proposition-tldr" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  tl;dr
-                </Label>
-                <Textarea
-                  id="proposition-tldr"
-                  value={form.tldr}
-                  onChange={(event) => setForm((current) => ({ ...current, tldr: event.target.value }))}
-                  maxLength={280}
-                  placeholder="One short sentence that explains the decision plainly."
-                  className="min-h-[90px] border-border bg-secondary/30 font-mono text-sm"
-                />
-              </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="proposition-tldr" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    tl;dr
+                  </Label>
+                  <Textarea
+                    id="proposition-tldr"
+                    value={form.tldr}
+                    onChange={(event) => setForm((current) => ({ ...current, tldr: event.target.value }))}
+                    maxLength={280}
+                    placeholder="One short sentence that explains the decision plainly."
+                    className="min-h-[84px] border-border bg-secondary/30 font-mono text-sm"
+                  />
+                </div>
 
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="proposition-bullets" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  Key points
-                </Label>
-                <Textarea
-                  id="proposition-bullets"
-                  value={form.bullets}
-                  onChange={(event) => setForm((current) => ({ ...current, bullets: event.target.value }))}
-                  placeholder={"One point per line\nLate access reduces crowding\nCommuter students keep usable study hours"}
-                  className="min-h-[120px] border-border bg-secondary/30 font-mono text-sm"
-                />
-              </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="proposition-bullets" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    Key points
+                  </Label>
+                  <Textarea
+                    id="proposition-bullets"
+                    value={form.bullets}
+                    onChange={(event) => setForm((current) => ({ ...current, bullets: event.target.value }))}
+                    placeholder={"One point per line\nLate access reduces crowding\nCommuter students keep usable study hours"}
+                    className="min-h-[110px] border-border bg-secondary/30 font-mono text-sm"
+                  />
+                </div>
 
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="proposition-brief" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  Full brief
-                </Label>
-                <Textarea
-                  id="proposition-brief"
-                  value={form.brief}
-                  onChange={(event) => setForm((current) => ({ ...current, brief: event.target.value }))}
-                  maxLength={8000}
-                  placeholder="Explain the issue, what should change, and why it matters."
-                  className="min-h-[180px] border-border bg-secondary/30 font-mono text-sm"
-                />
-              </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="proposition-brief" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    Full brief
+                  </Label>
+                  <Textarea
+                    id="proposition-brief"
+                    value={form.brief}
+                    onChange={(event) => setForm((current) => ({ ...current, brief: event.target.value }))}
+                    maxLength={8000}
+                    placeholder="Explain the issue, what should change, and why it matters."
+                    className="min-h-[160px] border-border bg-secondary/30 font-mono text-sm"
+                  />
+                </div>
 
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="proposition-closes-at" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                  Closing time
-                </Label>
-                <Input
-                  id="proposition-closes-at"
-                  type="datetime-local"
-                  value={form.closesAt}
-                  onChange={(event) => setForm((current) => ({ ...current, closesAt: event.target.value }))}
-                  className="border-border bg-secondary/30 font-mono text-sm"
-                />
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="proposition-closes-at" className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    Closing time
+                  </Label>
+                  <Input
+                    id="proposition-closes-at"
+                    type="datetime-local"
+                    value={form.closesAt}
+                    onChange={(event) => setForm((current) => ({ ...current, closesAt: event.target.value }))}
+                    className="border-border bg-secondary/30 font-mono text-sm"
+                  />
+                </div>
               </div>
             </div>
 
-            {errorMessage ? <p className="text-xs text-red-500">{errorMessage}</p> : null}
-
-            <DialogFooter className="gap-3 sm:justify-between sm:space-x-0">
+            <DialogFooter className="gap-3 border-t border-border px-6 py-4 sm:justify-between sm:space-x-0">
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Posting is tied to your signed-in university account and limited to slow abuse.
+                {errorMessage ? (
+                  <span className="text-red-500">{errorMessage}</span>
+                ) : (
+                  "Posting is tied to your signed-in university account and limited to slow abuse."
+                )}
               </p>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Button type="button" variant="outline" className={actionButtonClass} onClick={() => setOpen(false)}>
