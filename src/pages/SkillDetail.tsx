@@ -1,7 +1,7 @@
 import Navbar from "@/components/Navbar";
 import { Link, useParams } from "react-router-dom";
 import { ChevronDown, Copy, FileText, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import AccountDialog from "@/components/AccountDialog";
 import { Button } from "@/components/ui/button";
@@ -319,6 +319,20 @@ const SkillDetail = () => {
             : "We couldn't reach the AI provider. Try again once the provider is configured.",
       );
     }
+  };
+
+  const handleChatKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (!aiChatDraft.trim() || aiChatMutation.isPending) {
+      return;
+    }
+
+    event.currentTarget.form?.requestSubmit();
   };
 
   return (
@@ -675,6 +689,7 @@ const SkillDetail = () => {
                                         setAiChatErrorMessage("");
                                       }
                                     }}
+                                    onKeyDown={handleChatKeyDown}
                                     placeholder="Ask a follow-up question..."
                                     disabled={aiChatMutation.isPending}
                                     className="min-h-[110px] border-border bg-background/70 font-mono text-sm text-foreground placeholder:text-muted-foreground/70 focus-visible:ring-0"
