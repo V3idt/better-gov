@@ -1,4 +1,7 @@
 import type {
+  PropositionDetailResponse,
+  PropositionHistoryResponse,
+  PropositionListResponse,
   RequestSignInCodeInput,
   RequestSignInCodeResponse,
   SessionResponse,
@@ -6,13 +9,14 @@ import type {
   SubmitVoteResponse,
   VerifySignInCodeInput,
   VerifySignInCodeResponse,
-  VoteStatusResponse,
+  VoteChoice,
 } from "@/lib/voting";
 import { VotingApiError } from "@/lib/voting";
-import type { VoteChoice } from "@/lib/ballotItems";
 
 const API_BASE = "/api";
 export const sessionQueryKey = ["session"] as const;
+export const propositionListQueryKey = ["propositions"] as const;
+export const propositionHistoryQueryKey = ["propositions", "history"] as const;
 
 const parseError = async (response: Response) => {
   try {
@@ -55,11 +59,15 @@ const request = async <T>(path: string, init?: RequestInit) => {
 
 export const getSession = () => request<SessionResponse>("/me", { method: "GET" });
 
-export const getVoteStatus = (policyId: string) =>
-  request<VoteStatusResponse>(`/policies/${encodeURIComponent(policyId)}/vote`, { method: "GET" });
+export const listPropositions = () => request<PropositionListResponse>("/propositions", { method: "GET" });
 
-export const submitVote = (policyId: string, choice: VoteChoice) =>
-  request<SubmitVoteResponse>(`/policies/${encodeURIComponent(policyId)}/vote`, {
+export const listPropositionHistory = () => request<PropositionHistoryResponse>("/propositions/history", { method: "GET" });
+
+export const getPropositionByPath = (path: string) =>
+  request<PropositionDetailResponse>(`/propositions/by-path?path=${encodeURIComponent(path)}`, { method: "GET" });
+
+export const submitVote = (propositionId: string, choice: VoteChoice) =>
+  request<SubmitVoteResponse>(`/propositions/${encodeURIComponent(propositionId)}/vote`, {
     method: "POST",
     body: JSON.stringify({ choice }),
   });

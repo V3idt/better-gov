@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import {
+  propositionHistoryQueryKey,
+  propositionListQueryKey,
   requestSignInCode,
   sessionQueryKey,
   verifySignInCode,
@@ -62,7 +64,9 @@ const AccountDialog = ({ open, onOpenChange }: AccountDialogProps) => {
     mutationFn: verifySignInCode,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: sessionQueryKey });
-      await queryClient.invalidateQueries({ queryKey: ["vote-status"] });
+      await queryClient.invalidateQueries({ queryKey: propositionListQueryKey });
+      await queryClient.invalidateQueries({ queryKey: propositionHistoryQueryKey });
+      await queryClient.invalidateQueries({ queryKey: ["proposition"] });
       onOpenChange(false);
     },
   });

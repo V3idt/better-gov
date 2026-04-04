@@ -2,7 +2,13 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import AccountDialog from "@/components/AccountDialog";
 import { Button } from "@/components/ui/button";
-import { getSession, sessionQueryKey, signOut } from "@/lib/voting-api";
+import {
+  getSession,
+  propositionHistoryQueryKey,
+  propositionListQueryKey,
+  sessionQueryKey,
+  signOut,
+} from "@/lib/voting-api";
 
 const roleLabel = (role: "student" | "staff" | "dual") => {
   if (role === "dual") return "student / staff";
@@ -24,7 +30,9 @@ const NavbarAccount = () => {
     mutationFn: signOut,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: sessionQueryKey });
-      await queryClient.invalidateQueries({ queryKey: ["vote-status"] });
+      await queryClient.invalidateQueries({ queryKey: propositionListQueryKey });
+      await queryClient.invalidateQueries({ queryKey: propositionHistoryQueryKey });
+      await queryClient.invalidateQueries({ queryKey: ["proposition"] });
     },
   });
 

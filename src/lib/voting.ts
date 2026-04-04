@@ -1,35 +1,13 @@
-import type { BallotItem, VoteChoice } from "@/lib/ballotItems";
-
-export type { VoteChoice } from "@/lib/ballotItems";
+export type VoteChoice = "approve" | "reject" | "abstain";
+export type ReviewStatus = "PASS" | "WARN" | "FAIL";
+export type PropositionStatus = "open" | "closing_soon" | "draft" | "closed";
+export type PropositionOutcome = "APPROVED" | "REJECTED" | "TIED" | "NO_RESULT";
 
 export type Person = {
   id: string;
   displayName: string;
   primaryRole: "student" | "staff" | "dual";
   createdAt: string;
-};
-
-export type PolicyStatus = "open" | "closed" | "draft";
-
-export type PolicyRecord = {
-  id: string;
-  slug: string;
-  jurisdictionSlug: string;
-  title: string;
-  status: PolicyStatus;
-  closesAt: string;
-  sourcePath: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type VoteRecord = {
-  id: string;
-  policyId: string;
-  personId: string;
-  choice: VoteChoice;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export type SessionRecord = {
@@ -39,9 +17,67 @@ export type SessionRecord = {
   updatedAt: string;
 };
 
-export type VoteStatusResponse = {
-  policy: PolicyRecord;
-  vote: VoteRecord | null;
+export type VoteRecord = {
+  id: string;
+  propositionId: string;
+  personId: string;
+  choice: VoteChoice;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PropositionBreakdownItem = {
+  choice: VoteChoice;
+  label: string;
+  share: number;
+  count: number;
+};
+
+export type PropositionReviewCheck = {
+  name: string;
+  status: ReviewStatus;
+};
+
+export type PropositionSummary = {
+  id: string;
+  slug: string;
+  jurisdictionSlug: string;
+  path: string;
+  jurisdiction: string;
+  category: string;
+  title: string;
+  status: PropositionStatus;
+  closesAt: string;
+  postedAt: string;
+  sponsor: string;
+  supportPercent: number | null;
+  turnoutCount: number;
+};
+
+export type PropositionDetail = PropositionSummary & {
+  scope: string;
+  tldr: string;
+  bullets: string[];
+  reviewChecks: PropositionReviewCheck[];
+  voteBreakdown: PropositionBreakdownItem[];
+  brief: string;
+  myVote: VoteRecord | null;
+};
+
+export type PropositionHistoryItem = PropositionSummary & {
+  outcome: PropositionOutcome;
+};
+
+export type PropositionListResponse = {
+  propositions: PropositionSummary[];
+};
+
+export type PropositionHistoryResponse = {
+  propositions: PropositionHistoryItem[];
+};
+
+export type PropositionDetailResponse = {
+  proposition: PropositionDetail;
 };
 
 export type AuthenticatedSessionResponse = {
@@ -86,13 +122,6 @@ export type SignOutResponse = {
   success: true;
 };
 
-export type ApiErrorBody = {
-  error: {
-    code: string;
-    message: string;
-  };
-};
-
 export class VotingApiError extends Error {
   status: number;
   code: string;
@@ -108,19 +137,22 @@ export class VotingApiError extends Error {
 export const isApiUnavailableError = (error: unknown) =>
   error instanceof VotingApiError && error.code === "api_unavailable";
 
-export const policyIdFromParts = (jurisdictionSlug: string, slug: string) => `${jurisdictionSlug}:${slug}`;
+export const propositionIdFromParts = (jurisdictionSlug: string, slug: string) => `${jurisdictionSlug}:${slug}`;
 
-export const policyIdForItem = (item: Pick<BallotItem, "jurisdictionSlug" | "slug">) =>
-  policyIdFromParts(item.jurisdictionSlug, item.slug);
+export const propositionPathFromParts = (jurisdictionSlug: string, slug: string) => `/${jurisdictionSlug}/${slug}`;
 
-export const policyStatusFromBallotStatus = (status: BallotItem["status"]): PolicyStatus => {
-  if (status === "Draft") {
-    return "draft";
+export const formatSupportPercent = (value: number | null) => (value === null ? "--" : `${value.toFixed(1)}%`);
+
+export const formatTurnout = (value: number) => `${value.toLocaleString()} vote${value === 1 ? "" : "s"}`;
+
+export const formatCompactCount = (value: number) => {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
   }
 
-  if (status === "Closing Soon") {
-    return "open";
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}K`;
   }
 
-  return "open";
+  return value.toString();
 };

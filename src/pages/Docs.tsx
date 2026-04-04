@@ -11,25 +11,25 @@ const overviewContent = (
   <>
     <h1 className="text-3xl font-semibold text-foreground mb-4">How Better Gov Works</h1>
     <p className="text-muted-foreground mb-10">
-      Better Gov is a direct-governance platform where public decisions become ballot items that people can read, review, and vote on.
+      Better Gov is a direct-governance platform where public decisions become propositions that people can read, review, and vote on.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">What is a ballot item?</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">What is a proposition?</h2>
     <p className="text-muted-foreground mb-10">
-      A ballot item is any public decision that should be visible, understandable, and directly voteable by the people affected by it.
+      A proposition is any public decision that should be visible, understandable, and directly voteable by the people affected by it.
     </p>
 
     <h2 className="text-xl font-semibold text-foreground mb-4">How people use the platform</h2>
     <p className="text-muted-foreground mb-4">
-      People browse open ballot items, read the tl;dr, inspect the full brief, check review flags, and vote directly on the detail page.
+      People browse open propositions, read the tl;dr, inspect the full brief, check review flags, and vote directly on the detail page.
     </p>
     <p className="text-muted-foreground mb-10">
       Each item should make the stakes, tradeoffs, implementation risk, and closing date immediately obvious.
     </p>
 
-    <h2 className="text-xl font-semibold text-foreground mb-4">Browse the ballot</h2>
+    <h2 className="text-xl font-semibold text-foreground mb-4">Browse propositions</h2>
     <p className="text-muted-foreground mb-10">
-      Visit the <Link to="/" className="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">homepage</Link> to browse current ballot items and open the ones you care about.
+      Visit the <Link to="/" className="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">homepage</Link> to browse current propositions and open the ones you care about.
     </p>
 
     <h2 className="text-xl font-semibold text-foreground mb-4">Why review matters</h2>
@@ -46,12 +46,12 @@ const processContent = (
   <>
     <h1 className="text-3xl font-semibold text-foreground mb-4">Posting Process</h1>
     <p className="text-muted-foreground mb-10">
-      Every ballot item should follow a consistent pipeline before and during voting.
+      Every proposition should follow a consistent pipeline before and during voting.
     </p>
 
     <h2 className="text-xl font-semibold text-foreground mb-4">Minimum structure</h2>
     <p className="text-muted-foreground mb-4">
-      Each ballot item should include a short brief, a full brief, visible review checks, and a clear closing date:
+      Each proposition should include a short brief, a full brief, visible review checks, and a clear closing date:
     </p>
     <div className={`${commandBlockClass} mb-10`}>
       title / category / jurisdiction / tl;dr / full brief / review checks /

@@ -2,22 +2,27 @@ import { Database } from "bun:sqlite";
 import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { ballotItems } from "../src/lib/ballotItems.ts";
 import { EmailDeliveryError, sendSignInCodeEmail } from "./email.ts";
-import {
-  policyIdForItem,
-  policyStatusFromBallotStatus,
-  type Person,
-  type PolicyRecord,
-  type RequestSignInCodeResponse,
-  type SessionResponse,
-  type SessionRecord,
-  type SignOutResponse,
-  type SubmitVoteResponse,
-  type VerifySignInCodeResponse,
-  type VoteChoice,
-  type VoteRecord,
-  type VoteStatusResponse,
+import { propositionSeeds } from "./proposition-seeds.ts";
+import type {
+  Person,
+  PropositionDetail,
+  PropositionDetailResponse,
+  PropositionHistoryItem,
+  PropositionHistoryResponse,
+  PropositionOutcome,
+  PropositionReviewCheck,
+  PropositionStatus,
+  PropositionSummary,
+  PropositionListResponse,
+  RequestSignInCodeResponse,
+  SessionResponse,
+  SessionRecord,
+  SignOutResponse,
+  SubmitVoteResponse,
+  VerifySignInCodeResponse,
+  VoteChoice,
+  VoteRecord,
 } from "../src/lib/voting.ts";
 
 export const SESSION_COOKIE_NAME = "better-gov.session";
@@ -30,6 +35,8 @@ const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const OTP_MAX_FAILED_ATTEMPTS = 5;
 const OTP_PEPPER = process.env.BETTER_GOV_OTP_PEPPER ?? "better-gov-local-dev-pepper";
 const ALLOWED_EMAIL_DOMAIN = (process.env.BETTER_GOV_ALLOWED_EMAIL_DOMAIN ?? "university.edu").toLowerCase();
+const CLOSING_SOON_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
 const ROSTER_MEMBERS = [
   {
     personId: "person_rahel_bekele",
@@ -80,16 +87,24 @@ type SessionRow = {
   updated_at: string;
 };
 
-type PolicyRow = {
+type PropositionRow = {
   id: string;
   slug: string;
   jurisdiction_slug: string;
   title: string;
-  status: PolicyRecord["status"];
+  lifecycle_status: "open" | "closed" | "draft";
   closes_at: string;
   source_path: string;
   created_at: string;
   updated_at: string;
+  jurisdiction_label: string;
+  category: string;
+  sponsor: string;
+  scope: string;
+  tldr: string;
+  posted_at: string;
+  brief: string;
+  display_order: number;
 };
 
 type VoteRow = {
@@ -123,6 +138,13 @@ type EmailCodeRow = {
   updated_at: string;
 };
 
+type VoteCounts = {
+  approve: number;
+  reject: number;
+  abstain: number;
+  total: number;
+};
+
 export type SessionContext = {
   session: SessionRecord;
   person: Person;
@@ -138,7 +160,7 @@ export class VotingDatabaseError extends Error {
     | "code_expired"
     | "delivery_failed"
     | "rate_limited"
-    | "policy_not_found"
+    | "proposition_not_found"
     | "policy_closed"
     | "invalid_vote_choice"
     | "invalid_request"
@@ -153,13 +175,9 @@ export class VotingDatabaseError extends Error {
 }
 
 const now = () => new Date().toISOString();
-
 const toFutureIso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
-
 const randomId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
-
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
-
 const hasText = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 
 const maskEmail = (value: string) => {
@@ -209,33 +227,14 @@ const toSession = (row: SessionRow): SessionRecord => ({
   updatedAt: row.updated_at,
 });
 
-const toPolicy = (row: PolicyRow): PolicyRecord => ({
-  id: row.id,
-  slug: row.slug,
-  jurisdictionSlug: row.jurisdiction_slug,
-  title: row.title,
-  status: row.status,
-  closesAt: row.closes_at,
-  sourcePath: row.source_path,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
-
 const toVote = (row: VoteRow): VoteRecord => ({
   id: row.id.toString(),
-  policyId: row.policy_id,
+  propositionId: row.policy_id,
   personId: row.person_id,
   choice: row.choice,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
-
-const voteSql = `
-  INSERT INTO votes (policy_id, person_id, choice, created_at, updated_at)
-  VALUES (?, ?, ?, ?, ?)
-  ON CONFLICT(policy_id, person_id)
-  DO UPDATE SET choice = excluded.choice, updated_at = excluded.updated_at
-`;
 
 const personSql = `
   INSERT INTO people (id, display_name, primary_role, created_at, updated_at)
@@ -277,6 +276,30 @@ const policySql = `
     updated_at = excluded.updated_at
 `;
 
+const propositionDetailSql = `
+  INSERT INTO proposition_details (
+    policy_id,
+    jurisdiction_label,
+    category,
+    sponsor,
+    scope,
+    tldr,
+    posted_at,
+    brief,
+    display_order
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(policy_id) DO UPDATE SET
+    jurisdiction_label = excluded.jurisdiction_label,
+    category = excluded.category,
+    sponsor = excluded.sponsor,
+    scope = excluded.scope,
+    tldr = excluded.tldr,
+    posted_at = excluded.posted_at,
+    brief = excluded.brief,
+    display_order = excluded.display_order
+`;
+
 const rosterMemberSql = `
   INSERT INTO roster_members (
     person_id,
@@ -296,6 +319,13 @@ const rosterMemberSql = `
     role = excluded.role,
     status = excluded.status,
     updated_at = excluded.updated_at
+`;
+
+const voteSql = `
+  INSERT INTO votes (policy_id, person_id, choice, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?)
+  ON CONFLICT(policy_id, person_id)
+  DO UPDATE SET choice = excluded.choice, updated_at = excluded.updated_at
 `;
 
 const loadPerson = (db: Database, personId: string) => {
@@ -326,21 +356,67 @@ const loadSession = (db: Database, sessionId: string) => {
   return row ? toSession(row) : null;
 };
 
-const loadPolicy = (db: Database, policyId: string) => {
+const propositionSelect = `
+  SELECT
+    p.id,
+    p.slug,
+    p.jurisdiction_slug,
+    p.title,
+    p.status AS lifecycle_status,
+    p.closes_at,
+    p.source_path,
+    p.created_at,
+    p.updated_at,
+    d.jurisdiction_label,
+    d.category,
+    d.sponsor,
+    d.scope,
+    d.tldr,
+    d.posted_at,
+    d.brief,
+    d.display_order
+  FROM policies p
+  INNER JOIN proposition_details d ON d.policy_id = p.id
+`;
+
+const loadPropositionById = (db: Database, propositionId: string) => {
   const row = db
     .prepare(
       `
-        SELECT id, slug, jurisdiction_slug, title, status, closes_at, source_path, created_at, updated_at
-        FROM policies
-        WHERE id = ?
+        ${propositionSelect}
+        WHERE p.id = ?
       `,
     )
-    .get(policyId) as PolicyRow | undefined;
+    .get(propositionId) as PropositionRow | undefined;
 
-  return row ? toPolicy(row) : null;
+  return row ?? null;
 };
 
-const loadVote = (db: Database, policyId: string, personId: string) => {
+const loadPropositionByPath = (db: Database, propositionPath: string) => {
+  const row = db
+    .prepare(
+      `
+        ${propositionSelect}
+        WHERE p.source_path = ?
+      `,
+    )
+    .get(propositionPath) as PropositionRow | undefined;
+
+  return row ?? null;
+};
+
+const listPropositionRows = (db: Database, lifecycleStatus?: "open" | "closed" | "draft") =>
+  db
+    .prepare(
+      `
+        ${propositionSelect}
+        ${lifecycleStatus ? "WHERE p.status = ?" : ""}
+        ORDER BY d.display_order ASC, d.posted_at DESC, p.title ASC
+      `,
+    )
+    .all(...(lifecycleStatus ? [lifecycleStatus] : [])) as PropositionRow[];
+
+const loadVote = (db: Database, propositionId: string, personId: string) => {
   const row = db
     .prepare(
       `
@@ -349,10 +425,65 @@ const loadVote = (db: Database, policyId: string, personId: string) => {
         WHERE policy_id = ? AND person_id = ?
       `,
     )
-    .get(policyId, personId) as VoteRow | undefined;
+    .get(propositionId, personId) as VoteRow | undefined;
 
   return row ? toVote(row) : null;
 };
+
+const loadVoteCounts = (db: Database, propositionId: string): VoteCounts => {
+  const rows = db
+    .prepare(
+      `
+        SELECT choice, COUNT(*) AS count
+        FROM votes
+        WHERE policy_id = ?
+        GROUP BY choice
+      `,
+    )
+    .all(propositionId) as Array<{ choice: VoteChoice; count: number }>;
+
+  const counts: VoteCounts = {
+    approve: 0,
+    reject: 0,
+    abstain: 0,
+    total: 0,
+  };
+
+  for (const row of rows) {
+    counts[row.choice] = row.count;
+    counts.total += row.count;
+  }
+
+  return counts;
+};
+
+const loadPropositionBullets = (db: Database, propositionId: string) =>
+  (
+    db
+      .prepare(
+        `
+          SELECT content
+          FROM proposition_bullets
+          WHERE policy_id = ?
+          ORDER BY position ASC
+        `,
+      )
+      .all(propositionId) as Array<{ content: string }>
+  ).map((row) => row.content);
+
+const loadPropositionReviewChecks = (db: Database, propositionId: string) =>
+  (
+    db
+      .prepare(
+        `
+          SELECT name, status
+          FROM proposition_review_checks
+          WHERE policy_id = ?
+          ORDER BY position ASC
+        `,
+      )
+      .all(propositionId) as Array<PropositionReviewCheck>
+  );
 
 const loadRosterMemberByEmail = (db: Database, email: string) => {
   const row = db
@@ -384,22 +515,140 @@ const loadLatestEmailCode = (db: Database, email: string) => {
   return row ?? null;
 };
 
-const seedPolicies = (db: Database) => {
-  const timestamp = "2026-04-03T09:00:00.000Z";
+const propositionStatusForRow = (row: PropositionRow): PropositionStatus => {
+  if (row.lifecycle_status === "closed") {
+    return "closed";
+  }
 
-  for (const item of ballotItems) {
-    const policyId = policyIdForItem(item);
+  if (row.lifecycle_status === "draft") {
+    return "draft";
+  }
+
+  return Date.parse(row.closes_at) - Date.now() <= CLOSING_SOON_WINDOW_MS ? "closing_soon" : "open";
+};
+
+const propositionOutcomeForCounts = (counts: VoteCounts): PropositionOutcome => {
+  if (!counts.total) {
+    return "NO_RESULT";
+  }
+
+  if (counts.approve > counts.reject) {
+    return "APPROVED";
+  }
+
+  if (counts.reject > counts.approve) {
+    return "REJECTED";
+  }
+
+  return "TIED";
+};
+
+const supportPercentForCounts = (counts: VoteCounts) => (counts.total ? (counts.approve / counts.total) * 100 : null);
+
+const voteBreakdownForCounts = (counts: VoteCounts) => {
+  const total = counts.total || 1;
+  return [
+    {
+      choice: "approve" as const,
+      label: "Approve",
+      share: counts.total ? (counts.approve / total) * 100 : 0,
+      count: counts.approve,
+    },
+    {
+      choice: "reject" as const,
+      label: "Reject",
+      share: counts.total ? (counts.reject / total) * 100 : 0,
+      count: counts.reject,
+    },
+    {
+      choice: "abstain" as const,
+      label: "Abstain",
+      share: counts.total ? (counts.abstain / total) * 100 : 0,
+      count: counts.abstain,
+    },
+  ];
+};
+
+const toPropositionSummary = (row: PropositionRow, counts: VoteCounts): PropositionSummary => ({
+  id: row.id,
+  slug: row.slug,
+  jurisdictionSlug: row.jurisdiction_slug,
+  path: row.source_path,
+  jurisdiction: row.jurisdiction_label,
+  category: row.category,
+  title: row.title,
+  status: propositionStatusForRow(row),
+  closesAt: row.closes_at,
+  postedAt: row.posted_at,
+  sponsor: row.sponsor,
+  supportPercent: supportPercentForCounts(counts),
+  turnoutCount: counts.total,
+});
+
+const toPropositionDetail = (
+  db: Database,
+  row: PropositionRow,
+  counts: VoteCounts,
+  myVote: VoteRecord | null,
+): PropositionDetail => ({
+  ...toPropositionSummary(row, counts),
+  scope: row.scope,
+  tldr: row.tldr,
+  bullets: loadPropositionBullets(db, row.id),
+  reviewChecks: loadPropositionReviewChecks(db, row.id),
+  voteBreakdown: voteBreakdownForCounts(counts),
+  brief: row.brief,
+  myVote,
+});
+
+const seedPropositions = (db: Database) => {
+  const timestamp = "2026-04-04T08:00:00.000Z";
+
+  for (const proposition of propositionSeeds) {
     db.prepare(policySql).run(
-      policyId,
-      item.slug,
-      item.jurisdictionSlug,
-      item.title,
-      policyStatusFromBallotStatus(item.status),
-      item.closesOn,
-      `/${item.jurisdictionSlug}/${item.slug}`,
+      proposition.id,
+      proposition.slug,
+      proposition.jurisdictionSlug,
+      proposition.title,
+      proposition.status,
+      proposition.closesAt,
+      proposition.path,
       timestamp,
       timestamp,
     );
+
+    db.prepare(propositionDetailSql).run(
+      proposition.id,
+      proposition.jurisdiction,
+      proposition.category,
+      proposition.sponsor,
+      proposition.scope,
+      proposition.tldr,
+      proposition.postedAt,
+      proposition.brief,
+      proposition.displayOrder,
+    );
+
+    db.prepare(`DELETE FROM proposition_bullets WHERE policy_id = ?`).run(proposition.id);
+    db.prepare(`DELETE FROM proposition_review_checks WHERE policy_id = ?`).run(proposition.id);
+
+    proposition.bullets.forEach((bullet, index) => {
+      db.prepare(
+        `
+          INSERT INTO proposition_bullets (policy_id, position, content)
+          VALUES (?, ?, ?)
+        `,
+      ).run(proposition.id, index, bullet);
+    });
+
+    proposition.reviewChecks.forEach((check, index) => {
+      db.prepare(
+        `
+          INSERT INTO proposition_review_checks (policy_id, position, name, status)
+          VALUES (?, ?, ?, ?)
+        `,
+      ).run(proposition.id, index, check.name, check.status);
+    });
   }
 };
 
@@ -426,7 +675,7 @@ const initializeDatabase = (db: Database) => {
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA busy_timeout = 5000;");
   db.exec(MIGRATION_SQL);
-  seedPolicies(db);
+  seedPropositions(db);
   seedRoster(db);
 };
 
@@ -451,6 +700,9 @@ const requireSessionContext = (db: Database, sessionId: string | null) => {
 
   return context;
 };
+
+const isPropositionOpenForVoting = (row: PropositionRow) =>
+  row.lifecycle_status === "open" && Date.parse(row.closes_at) > Date.now();
 
 export const openVotingDatabase = (dbPath: string = DEFAULT_DB_PATH) => {
   mkdirSync(dirname(dbPath), { recursive: true });
@@ -654,45 +906,76 @@ export const signOut = (db: Database, sessionId: string | null): SignOutResponse
   return { success: true };
 };
 
-export const getVoteStatus = (db: Database, sessionId: string | null, policyId: string): VoteStatusResponse => {
-  const session = requireSessionContext(db, sessionId);
-  const policy = loadPolicy(db, policyId);
-  if (!policy) {
-    throw new VotingDatabaseError("policy_not_found", "Policy not found.");
+export const listPropositions = (db: Database): PropositionListResponse => {
+  const propositions = listPropositionRows(db)
+    .map((row) => ({ row, counts: loadVoteCounts(db, row.id) }))
+    .filter(({ row }) => row.lifecycle_status !== "closed")
+    .map(({ row, counts }) => toPropositionSummary(row, counts));
+
+  return { propositions };
+};
+
+export const listPropositionHistory = (db: Database): PropositionHistoryResponse => {
+  const propositions: PropositionHistoryItem[] = listPropositionRows(db, "closed").map((row) => {
+    const counts = loadVoteCounts(db, row.id);
+    return {
+      ...toPropositionSummary(row, counts),
+      outcome: propositionOutcomeForCounts(counts),
+    };
+  });
+
+  return { propositions };
+};
+
+export const getPropositionDetail = (
+  db: Database,
+  sessionId: string | null,
+  propositionPath: string,
+): PropositionDetailResponse => {
+  const proposition = loadPropositionByPath(db, propositionPath);
+  if (!proposition) {
+    throw new VotingDatabaseError("proposition_not_found", "Proposition not found.");
   }
 
+  const session = getResolvedSession(db, sessionId);
+  const counts = loadVoteCounts(db, proposition.id);
+
   return {
-    policy,
-    vote: loadVote(db, policyId, session.person.id),
+    proposition: toPropositionDetail(
+      db,
+      proposition,
+      counts,
+      session ? loadVote(db, proposition.id, session.person.id) : null,
+    ),
   };
 };
 
 export const submitVote = (
   db: Database,
   sessionId: string | null,
-  policyId: string,
+  propositionId: string,
   choice: VoteChoice,
 ): SubmitVoteResponse => {
   const session = requireSessionContext(db, sessionId);
-  const policy = loadPolicy(db, policyId);
+  const proposition = loadPropositionById(db, propositionId);
 
-  if (!policy) {
-    throw new VotingDatabaseError("policy_not_found", "Policy not found.");
+  if (!proposition) {
+    throw new VotingDatabaseError("proposition_not_found", "Proposition not found.");
   }
 
-  if (policy.status !== "open") {
-    throw new VotingDatabaseError("policy_closed", "This policy is closed.");
+  if (!isPropositionOpenForVoting(proposition)) {
+    throw new VotingDatabaseError("policy_closed", "This proposition is not open for voting.");
   }
 
   return db.transaction(() => {
-    const existingVote = loadVote(db, policyId, session.person.id);
+    const existingVote = loadVote(db, propositionId, session.person.id);
     const timestamp = now();
 
-    db.prepare(voteSql).run(policyId, session.person.id, choice, existingVote?.createdAt ?? timestamp, timestamp);
+    db.prepare(voteSql).run(propositionId, session.person.id, choice, existingVote?.createdAt ?? timestamp, timestamp);
 
     return {
       action: existingVote ? "updated" : "created",
-      vote: loadVote(db, policyId, session.person.id) as VoteRecord,
+      vote: loadVote(db, propositionId, session.person.id) as VoteRecord,
     };
   })();
 };

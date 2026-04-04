@@ -1,106 +1,70 @@
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import Navbar from "@/components/Navbar";
+import {
+  listPropositionHistory,
+  propositionHistoryQueryKey,
+} from "@/lib/voting-api";
+import { formatSupportPercent, formatTurnout, type PropositionOutcome } from "@/lib/voting";
 
-type ClosedVote = {
-  id: number;
-  title: string;
-  area: string;
-  closedOn: string;
-  outcome: "APPROVED" | "REJECTED";
-  support: string;
-  turnout: string;
-};
-
-const closedVotes: ClosedVote[] = [
-  {
-    id: 1,
-    title: "Spring Reading Week",
-    area: "Academic calendar",
-    closedOn: "March 03, 2026",
-    outcome: "APPROVED",
-    support: "74.8%",
-    turnout: "19.2K votes",
-  },
-  {
-    id: 2,
-    title: "Late Tuition Fee Relief",
-    area: "Tuition & fees",
-    closedOn: "February 24, 2026",
-    outcome: "APPROVED",
-    support: "68.1%",
-    turnout: "14.6K votes",
-  },
-  {
-    id: 3,
-    title: "Mandatory Attendance Policy",
-    area: "Academic policy",
-    closedOn: "February 08, 2026",
-    outcome: "REJECTED",
-    support: "38.7%",
-    turnout: "16.8K votes",
-  },
-  {
-    id: 4,
-    title: "Campus Wi-Fi Upgrade Fund",
-    area: "Technology",
-    closedOn: "January 29, 2026",
-    outcome: "APPROVED",
-    support: "81.3%",
-    turnout: "12.4K votes",
-  },
-  {
-    id: 5,
-    title: "Residence Hall Guest Curfew",
-    area: "Campus housing",
-    closedOn: "January 11, 2026",
-    outcome: "REJECTED",
-    support: "29.4%",
-    turnout: "10.7K votes",
-  },
-];
-
-const outcomeClass = (outcome: ClosedVote["outcome"]) => {
+const outcomeClass = (outcome: PropositionOutcome) => {
   if (outcome === "APPROVED") return "text-green-500 bg-green-500/10";
-  return "text-red-500 bg-red-500/10";
+  if (outcome === "REJECTED") return "text-red-500 bg-red-500/10";
+  return "text-amber-500 bg-amber-500/10";
 };
 
 const Audits = () => {
+  const historyQuery = useQuery({
+    queryKey: propositionHistoryQueryKey,
+    queryFn: listPropositionHistory,
+  });
+
+  const propositions = historyQuery.data?.propositions ?? [];
+
   return (
     <div className="min-h-screen bg-background text-foreground font-mono">
       <Navbar />
-      <div className="max-w-5xl mx-auto px-6 pt-12 pb-16">
+      <div className="mx-auto max-w-5xl px-6 pb-16 pt-12">
         <h1 className="mb-4 text-3xl font-semibold text-foreground">Vote History</h1>
-        <p className="mb-10 text-muted-foreground">
-          Closed votes and their final results.
-        </p>
+        <p className="mb-10 text-muted-foreground">Closed propositions and their final results.</p>
 
         <div className="mb-2 grid grid-cols-[32px_minmax(0,1fr)_92px_96px] px-2 text-xs uppercase tracking-wider text-muted-foreground sm:grid-cols-[40px_minmax(0,1fr)_120px_120px]">
           <span>#</span>
-          <span>Ballot Item</span>
+          <span>Proposition</span>
           <span>Result</span>
           <span className="text-right">Support</span>
         </div>
 
         <div className="divide-y divide-border">
-          {closedVotes.map((vote) => (
-            <div
-              key={vote.id}
-              className="grid grid-cols-[32px_minmax(0,1fr)_92px_96px] items-start px-2 py-3.5 sm:grid-cols-[40px_minmax(0,1fr)_120px_120px]"
-            >
-              <span className="text-sm text-muted-foreground">{vote.id}</span>
-              <div className="min-w-0">
-                <div className="flex min-w-0 flex-col gap-1">
-                  <span className="break-words text-sm font-semibold text-foreground">{vote.title}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {vote.area} / Closed {vote.closedOn} / {vote.turnout}
-                  </span>
+          {historyQuery.isLoading ? (
+            <div className="px-2 py-6 text-sm text-muted-foreground">Loading history ...</div>
+          ) : historyQuery.isError ? (
+            <div className="px-2 py-6 text-sm text-red-500">Could not load proposition history.</div>
+          ) : propositions.length === 0 ? (
+            <div className="px-2 py-6 text-sm text-muted-foreground">No closed propositions yet.</div>
+          ) : (
+            propositions.map((proposition, index) => (
+              <Link
+                key={proposition.id}
+                to={proposition.path}
+                className="grid grid-cols-[32px_minmax(0,1fr)_92px_96px] items-start px-2 py-3.5 transition-colors hover:bg-secondary/50 sm:grid-cols-[40px_minmax(0,1fr)_120px_120px]"
+              >
+                <span className="text-sm text-muted-foreground">{index + 1}</span>
+                <div className="min-w-0">
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <span className="break-words text-sm font-semibold text-foreground">{proposition.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {proposition.category} / Closed {new Date(proposition.closesAt).toLocaleDateString()} / {formatTurnout(proposition.turnoutCount)}
+                    </span>
+                  </div>
                 </div>
-              </div>
-              <span className={`w-fit rounded px-2 py-0.5 text-xs font-mono ${outcomeClass(vote.outcome)}`}>
-                {vote.outcome}
-              </span>
-              <span className="text-right font-mono text-sm text-foreground">{vote.support}</span>
-            </div>
-          ))}
+                <span className={`w-fit rounded px-2 py-0.5 text-xs font-mono ${outcomeClass(proposition.outcome)}`}>
+                  {proposition.outcome}
+                </span>
+                <span className="text-right font-mono text-sm text-foreground">{formatSupportPercent(proposition.supportPercent)}</span>
+              </Link>
+            ))
+          )}
         </div>
       </div>
     </div>

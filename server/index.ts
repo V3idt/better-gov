@@ -1,8 +1,10 @@
 import {
   buildClearSessionCookie,
   buildSessionCookie,
+  getPropositionDetail,
   getSession,
-  getVoteStatus,
+  listPropositionHistory,
+  listPropositions,
   openVotingDatabase,
   requestSignInCode,
   SESSION_COOKIE_NAME,
@@ -11,8 +13,7 @@ import {
   verifySignInCode,
   VotingDatabaseError,
 } from "./db.ts";
-import type { RequestSignInCodeInput, VerifySignInCodeInput } from "../src/lib/voting.ts";
-import type { VoteChoice } from "../src/lib/ballotItems.ts";
+import type { RequestSignInCodeInput, VerifySignInCodeInput, VoteChoice } from "../src/lib/voting.ts";
 
 const port = Number(process.env.BETTER_GOV_API_PORT ?? "8787");
 const db = openVotingDatabase();
@@ -53,7 +54,7 @@ const errorResponse = (error: unknown, headers: HeadersInit = {}) => {
       code_expired: 410,
       delivery_failed: 500,
       rate_limited: 429,
-      policy_not_found: 404,
+      proposition_not_found: 404,
       policy_closed: 409,
       invalid_vote_choice: 400,
       invalid_request: 400,
@@ -86,72 +87,6 @@ const errorResponse = (error: unknown, headers: HeadersInit = {}) => {
   );
 };
 
-const handleVoteStatus = (request: Request, policyId: string) => {
-  try {
-    const payload = getVoteStatus(db, readSessionCookie(request), policyId);
-    return json(payload);
-  } catch (error) {
-    return errorResponse(error);
-  }
-};
-
-const handleSubmitVote = async (request: Request, policyId: string) => {
-  try {
-    const body = await parseJson<{ choice?: VoteChoice }>(request);
-
-    if (body.choice !== "approve" && body.choice !== "reject" && body.choice !== "abstain") {
-      throw new VotingDatabaseError("invalid_vote_choice", "A valid vote choice is required.");
-    }
-
-    const payload = submitVote(db, readSessionCookie(request), policyId, body.choice);
-    return json(payload);
-  } catch (error) {
-    return errorResponse(error);
-  }
-};
-
-const handleRequestCode = async (request: Request) => {
-  try {
-    const body = await parseJson<RequestSignInCodeInput>(request);
-    if (typeof body.email !== "string") {
-      throw new VotingDatabaseError("invalid_email", "Enter your university email.");
-    }
-    const payload = await requestSignInCode(db, body.email);
-    return json(payload, 200);
-  } catch (error) {
-    return errorResponse(error);
-  }
-};
-
-const handleVerifyCode = async (request: Request) => {
-  try {
-    const body = await parseJson<VerifySignInCodeInput>(request);
-    if (typeof body.email !== "string") {
-      throw new VotingDatabaseError("invalid_email", "Enter your university email.");
-    }
-    if (typeof body.code !== "string") {
-      throw new VotingDatabaseError("invalid_code", "Enter the 6-digit code.");
-    }
-    const payload = verifySignInCode(db, body.email, body.code);
-    return json(payload, 200, {
-      "Set-Cookie": buildSessionCookie(payload.session.id),
-    });
-  } catch (error) {
-    return errorResponse(error);
-  }
-};
-
-const handleSignOut = (request: Request) => {
-  try {
-    const payload = signOut(db, readSessionCookie(request));
-    return json(payload, 200, {
-      "Set-Cookie": buildClearSessionCookie(),
-    });
-  } catch (error) {
-    return errorResponse(error);
-  }
-};
-
 const server = Bun.serve({
   port,
   fetch: async (request) => {
@@ -172,25 +107,62 @@ const server = Bun.serve({
         );
       }
 
-      const voteMatch = url.pathname.match(/^\/api\/policies\/([^/]+)\/vote$/);
-      if (voteMatch && request.method === "GET") {
-        return handleVoteStatus(request, decodeURIComponent(voteMatch[1]));
+      if (request.method === "GET" && url.pathname === "/api/propositions") {
+        return json(listPropositions(db));
       }
 
-      if (voteMatch && request.method === "POST") {
-        return await handleSubmitVote(request, decodeURIComponent(voteMatch[1]));
+      if (request.method === "GET" && url.pathname === "/api/propositions/history") {
+        return json(listPropositionHistory(db));
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/propositions/by-path") {
+        const propositionPath = url.searchParams.get("path");
+        if (!propositionPath) {
+          throw new VotingDatabaseError("invalid_request", "A proposition path is required.");
+        }
+
+        return json(getPropositionDetail(db, readSessionCookie(request), propositionPath));
+      }
+
+      const propositionVoteMatch = url.pathname.match(/^\/api\/propositions\/([^/]+)\/vote$/);
+      if (propositionVoteMatch && request.method === "POST") {
+        const body = await parseJson<{ choice?: VoteChoice }>(request);
+        if (body.choice !== "approve" && body.choice !== "reject" && body.choice !== "abstain") {
+          throw new VotingDatabaseError("invalid_vote_choice", "A valid vote choice is required.");
+        }
+
+        return json(submitVote(db, readSessionCookie(request), decodeURIComponent(propositionVoteMatch[1]), body.choice));
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/request-code") {
-        return await handleRequestCode(request);
+        const body = await parseJson<RequestSignInCodeInput>(request);
+        if (typeof body.email !== "string") {
+          throw new VotingDatabaseError("invalid_email", "Enter your university email.");
+        }
+
+        return json(await requestSignInCode(db, body.email));
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/verify-code") {
-        return await handleVerifyCode(request);
+        const body = await parseJson<VerifySignInCodeInput>(request);
+        if (typeof body.email !== "string") {
+          throw new VotingDatabaseError("invalid_email", "Enter your university email.");
+        }
+
+        if (typeof body.code !== "string") {
+          throw new VotingDatabaseError("invalid_code", "Enter the 6-digit code.");
+        }
+
+        const payload = verifySignInCode(db, body.email, body.code);
+        return json(payload, 200, {
+          "Set-Cookie": buildSessionCookie(payload.session.id),
+        });
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/sign-out") {
-        return handleSignOut(request);
+        return json(signOut(db, readSessionCookie(request)), 200, {
+          "Set-Cookie": buildClearSessionCookie(),
+        });
       }
 
       return json({ error: { code: "not_found", message: "Route not found." } }, 404);

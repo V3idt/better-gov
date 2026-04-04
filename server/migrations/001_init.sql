@@ -27,6 +27,35 @@ CREATE TABLE IF NOT EXISTS policies (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS proposition_details (
+  policy_id TEXT PRIMARY KEY REFERENCES policies(id) ON DELETE CASCADE,
+  jurisdiction_label TEXT NOT NULL,
+  category TEXT NOT NULL,
+  sponsor TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  tldr TEXT NOT NULL,
+  posted_at TEXT NOT NULL,
+  brief TEXT NOT NULL,
+  display_order INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS proposition_bullets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  policy_id TEXT NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  UNIQUE(policy_id, position)
+);
+
+CREATE TABLE IF NOT EXISTS proposition_review_checks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  policy_id TEXT NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('PASS', 'WARN', 'FAIL')),
+  UNIQUE(policy_id, position)
+);
+
 CREATE TABLE IF NOT EXISTS votes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   policy_id TEXT NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
@@ -63,5 +92,8 @@ CREATE TABLE IF NOT EXISTS email_verification_codes (
 CREATE INDEX IF NOT EXISTS idx_sessions_person_id ON sessions(person_id);
 CREATE INDEX IF NOT EXISTS idx_votes_policy_id ON votes(policy_id);
 CREATE INDEX IF NOT EXISTS idx_votes_person_id ON votes(person_id);
+CREATE INDEX IF NOT EXISTS idx_proposition_details_order ON proposition_details(display_order);
+CREATE INDEX IF NOT EXISTS idx_proposition_bullets_policy_id ON proposition_bullets(policy_id);
+CREATE INDEX IF NOT EXISTS idx_proposition_checks_policy_id ON proposition_review_checks(policy_id);
 CREATE INDEX IF NOT EXISTS idx_roster_members_email ON roster_members(university_email);
 CREATE INDEX IF NOT EXISTS idx_email_codes_email_created ON email_verification_codes(university_email, created_at DESC);

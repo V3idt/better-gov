@@ -2,13 +2,13 @@
 
 better-gov is a prototype for direct decision-making. The core idea is simple: people should be able to vote directly on decisions that affect them, instead of having their intent diluted through layers of representation.
 
-This version of the product is currently framed around university governance. The sample ballot items focus on campus issues like tuition, library access, lecture recording, housing, shuttles, counseling, and exam policy.
+This version of the product is currently framed around university governance. The initial proposition set focuses on campus issues like tuition, library access, lecture recording, housing, shuttles, counseling, and exam policy.
 
 ## Current Product Shape
 
 - A minimalist landing page introducing the platform
-- An open ballot list
-- A ballot detail page with a `tl;dr`, full brief, vote actions, and current split
+- An open proposition list backed by the API
+- A proposition detail page with a `tl;dr`, full brief, live vote actions, and current split
 - A history page for closed votes and outcomes
 - A lightweight branding system aligned with the current dark, restrained visual style
 
@@ -80,10 +80,10 @@ If email delivery is not configured and dev-code mode is disabled, sign-in code 
 
 ## Notes
 
-- The current ballot data is static and lives in [`src/lib/ballotItems.ts`](src/lib/ballotItems.ts).
-- The vote flow now requires an authenticated university account and stores votes through a Bun + SQLite backend with a unique `(policy_id, person_id)` constraint.
-- The API server seeds the ballot list and a small sample university roster into SQLite on startup.
-- The `History` section currently uses mocked closed-vote data.
+- Proposition list data, proposition detail data, review checks, and vote aggregates are served from the Bun + SQLite backend.
+- The vote flow requires an authenticated university account and stores votes with a unique `(policy_id, person_id)` constraint.
+- The API server seeds the proposition catalog and a small sample university roster into SQLite on startup.
+- The frontend no longer reads proposition detail or history data directly from hardcoded page-level arrays.
 
 ## Direction
 
