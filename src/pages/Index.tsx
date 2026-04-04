@@ -9,8 +9,8 @@ const Index = () => {
       <Navbar />
 
       {/* Hero Section */}
-      <div className="max-w-5xl mx-auto px-6 pt-12 pb-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start mb-16">
+      <div className="mx-auto max-w-6xl px-6 pb-16 pt-12">
+        <div className="mb-16 grid grid-cols-1 items-start gap-10 md:grid-cols-[1.2fr_0.8fr]">
           {/* Left: Logo + Command */}
           <div>
             <SkillsLogo />
