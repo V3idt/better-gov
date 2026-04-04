@@ -35,6 +35,8 @@ Start the full app with the API and Vite frontend:
 npm run dev
 ```
 
+This matters for accounts. The sign-in form calls the Bun API on `127.0.0.1:8787`, so if you only run `npm run dev:web` the frontend will load but account requests will fail.
+
 If you want to run them separately:
 
 ```bash
@@ -54,11 +56,33 @@ Run the server database tests:
 npm run test:server
 ```
 
+## Account Email Setup
+
+University account sign-in uses one-time email codes.
+
+For local development:
+
+1. Copy `.env.example` to `.env`.
+2. Leave `BETTER_GOV_DEV_AUTH_CODES=1`.
+3. Run `npm run dev`.
+
+In that mode, the app shows the OTP in the dialog and logs it in the API console instead of sending a real email.
+
+For real email delivery:
+
+1. Set `RESEND_API_KEY`.
+2. Set `BETTER_GOV_EMAIL_FROM` to a verified sender identity in Resend.
+3. Optionally set `BETTER_GOV_EMAIL_REPLY_TO`.
+4. Set `BETTER_GOV_APP_URL` to the public app URL.
+5. Turn off `BETTER_GOV_DEV_AUTH_CODES`.
+
+If email delivery is not configured and dev-code mode is disabled, sign-in code requests will fail by design.
+
 ## Notes
 
 - The current ballot data is static and lives in [`src/lib/ballotItems.ts`](src/lib/ballotItems.ts).
-- The vote flow now resolves to a canonical `person_id` and stores votes through a Bun + SQLite backend with a unique `(policy_id, person_id)` constraint.
-- The API server seeds the ballot list into SQLite on startup and keeps a demo session available for the current prototype.
+- The vote flow now requires an authenticated university account and stores votes through a Bun + SQLite backend with a unique `(policy_id, person_id)` constraint.
+- The API server seeds the ballot list and a small sample university roster into SQLite on startup.
 - The `History` section currently uses mocked closed-vote data.
 
 ## Direction

@@ -31,9 +31,9 @@ afterEach(() => {
 });
 
 describe("voting database", () => {
-  it("keeps anonymous visitors unauthenticated until they verify a university email code", () => {
+  it("keeps anonymous visitors unauthenticated until they verify a university email code", async () => {
     const anonymous = getSession(db, null);
-    const codeDelivery = requestSignInCode(db, "rahel.bekele@university.edu");
+    const codeDelivery = await requestSignInCode(db, "rahel.bekele@university.edu");
     const verified = verifySignInCode(db, "rahel.bekele@university.edu", codeDelivery.devCode ?? "");
     const authenticated = getSession(db, verified.session.id);
 
@@ -43,8 +43,8 @@ describe("voting database", () => {
     expect(authenticated.authenticated).toBe(true);
   });
 
-  it("keeps one vote row per policy for each authenticated account", () => {
-    const codeDelivery = requestSignInCode(db, "leila.mekonnen@university.edu");
+  it("keeps one vote row per policy for each authenticated account", async () => {
+    const codeDelivery = await requestSignInCode(db, "leila.mekonnen@university.edu");
     const verified = verifySignInCode(db, "leila.mekonnen@university.edu", codeDelivery.devCode ?? "");
     const policyId = policyIdForItem(ballotItems[0]);
     const created = submitVote(db, verified.session.id, policyId, "approve");
@@ -72,13 +72,13 @@ describe("voting database", () => {
     expect(() => submitVote(db, null, policyId, "approve")).toThrow(VotingDatabaseError);
   });
 
-  it("rejects expired or invalid verification codes", () => {
-    requestSignInCode(db, "hana.tadesse@university.edu");
+  it("rejects expired or invalid verification codes", async () => {
+    await requestSignInCode(db, "hana.tadesse@university.edu");
 
     expect(() => verifySignInCode(db, "hana.tadesse@university.edu", "000000")).toThrow(VotingDatabaseError);
   });
 
-  it("rejects empty email requests with a validation error instead of a server crash", () => {
-    expect(() => requestSignInCode(db, "")).toThrow(VotingDatabaseError);
+  it("rejects empty email requests with a validation error instead of a server crash", async () => {
+    await expect(requestSignInCode(db, "")).rejects.toThrow(VotingDatabaseError);
   });
 });

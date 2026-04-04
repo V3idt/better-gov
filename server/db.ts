@@ -3,6 +3,7 @@ import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { ballotItems } from "../src/lib/ballotItems.ts";
+import { EmailDeliveryError, sendSignInCodeEmail } from "./email.ts";
 import {
   policyIdForItem,
   policyStatusFromBallotStatus,
@@ -29,8 +30,6 @@ const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const OTP_MAX_FAILED_ATTEMPTS = 5;
 const OTP_PEPPER = process.env.BETTER_GOV_OTP_PEPPER ?? "better-gov-local-dev-pepper";
 const ALLOWED_EMAIL_DOMAIN = (process.env.BETTER_GOV_ALLOWED_EMAIL_DOMAIN ?? "university.edu").toLowerCase();
-const ENABLE_DEV_CODE_ECHO = process.env.NODE_ENV !== "production" || process.env.BETTER_GOV_DEV_AUTH_CODES === "1";
-
 const ROSTER_MEMBERS = [
   {
     personId: "person_rahel_bekele",
@@ -137,6 +136,7 @@ export class VotingDatabaseError extends Error {
     | "invalid_email"
     | "invalid_code"
     | "code_expired"
+    | "delivery_failed"
     | "rate_limited"
     | "policy_not_found"
     | "policy_closed"
@@ -508,7 +508,7 @@ export const getSession = (db: Database, sessionId: string | null): SessionRespo
   };
 };
 
-export const requestSignInCode = (db: Database, email: string): RequestSignInCodeResponse => {
+export const requestSignInCode = async (db: Database, email: string): Promise<RequestSignInCodeResponse> => {
   if (!hasText(email)) {
     throw new VotingDatabaseError("invalid_email", "Enter your university email.");
   }
@@ -538,6 +538,7 @@ export const requestSignInCode = (db: Database, email: string): RequestSignInCod
 
   const code = createOtpCode();
   const timestamp = now();
+  const codeId = randomId("otp");
 
   db.prepare(
     `
@@ -553,14 +554,27 @@ export const requestSignInCode = (db: Database, email: string): RequestSignInCod
       )
       VALUES (?, ?, ?, ?, NULL, 0, ?, ?)
     `,
-  ).run(randomId("otp"), normalizedEmail, hashOtpCode(normalizedEmail, code), toFutureIso(OTP_TTL_MS), timestamp, timestamp);
+  ).run(codeId, normalizedEmail, hashOtpCode(normalizedEmail, code), toFutureIso(OTP_TTL_MS), timestamp, timestamp);
+
+  let deliveryResult;
+  try {
+    deliveryResult = await sendSignInCodeEmail(normalizedEmail, code);
+  } catch (error) {
+    db.prepare(`DELETE FROM email_verification_codes WHERE id = ?`).run(codeId);
+
+    if (error instanceof EmailDeliveryError) {
+      throw new VotingDatabaseError("delivery_failed", error.message);
+    }
+
+    throw error;
+  }
 
   return {
     status: "sent",
     destination: maskEmail(normalizedEmail),
     expiresAt,
     resendAvailableAt,
-    ...(ENABLE_DEV_CODE_ECHO ? { devCode: code } : {}),
+    ...(deliveryResult.mode === "development" ? { devCode: deliveryResult.devCode } : {}),
   };
 };
 

@@ -105,6 +105,9 @@ export class VotingApiError extends Error {
   }
 }
 
+export const isApiUnavailableError = (error: unknown) =>
+  error instanceof VotingApiError && error.code === "api_unavailable";
+
 export const policyIdFromParts = (jurisdictionSlug: string, slug: string) => `${jurisdictionSlug}:${slug}`;
 
 export const policyIdForItem = (item: Pick<BallotItem, "jurisdictionSlug" | "slug">) =>

@@ -28,14 +28,23 @@ const parseError = async (response: Response) => {
 };
 
 const request = async <T>(path: string, init?: RequestInit) => {
-  const response = await fetch(`${API_BASE}${path}`, {
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      ...init,
+    });
+  } catch {
+    throw new VotingApiError(
+      503,
+      "api_unavailable",
+      "The account service is not running. Start the app with `npm run dev`, or run `npm run dev:api` alongside the web server.",
+    );
+  }
 
   if (!response.ok) {
     throw await parseError(response);

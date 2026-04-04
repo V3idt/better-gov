@@ -51,6 +51,7 @@ const errorResponse = (error: unknown, headers: HeadersInit = {}) => {
       invalid_email: 400,
       invalid_code: 400,
       code_expired: 410,
+      delivery_failed: 500,
       rate_limited: 429,
       policy_not_found: 404,
       policy_closed: 409,
@@ -115,7 +116,7 @@ const handleRequestCode = async (request: Request) => {
     if (typeof body.email !== "string") {
       throw new VotingDatabaseError("invalid_email", "Enter your university email.");
     }
-    const payload = requestSignInCode(db, body.email);
+    const payload = await requestSignInCode(db, body.email);
     return json(payload, 200);
   } catch (error) {
     return errorResponse(error);
