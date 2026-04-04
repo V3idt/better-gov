@@ -224,7 +224,7 @@ Students leaving labs, rehearsals, library floors, or night classes do not all l
 The campus becomes easier and safer to move through after dark.`,
   },
   {
-    rank: 5,
+    rank: 0,
     slug: "residence-hall-rent-cap",
     jurisdictionSlug: "housing",
     jurisdiction: "Campus Housing",
