@@ -193,6 +193,8 @@ const getProviderCandidates = (providerPreference: AiProviderPreference) => {
   ];
 };
 
+const hasConfiguredAiProvider = () => getProviderCandidates("auto").length > 0;
+
 const getProviderConfig = (provider: Exclude<AiProviderPreference, "auto">): ProviderConfig | null => {
   if (provider === "openai") {
     const apiKey = process.env.BETTER_GOV_OPENAI_API_KEY?.trim() ?? "";
@@ -1424,6 +1426,15 @@ export const reconcileAutomaticAiPolicies = async ({
 
   automaticAiPublishInFlight = (async () => {
     const status = getAutomaticAiPolicyBuilderStatus(db);
+    if (!hasConfiguredAiProvider()) {
+      return {
+        ...status,
+        canPublishNow: false,
+        waitingReason:
+          status.waitingReason ?? "Automatic AI publishing is paused until at least one AI provider key is configured.",
+      };
+    }
+
     if (status.activeCount >= status.limit || status.nextSourcePropositions.length < 2) {
       return status;
     }

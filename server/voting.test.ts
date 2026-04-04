@@ -22,6 +22,15 @@ let dbPath = "";
 let db: ReturnType<typeof openVotingDatabase>;
 const configuredDomain = process.env.BETTER_GOV_ALLOWED_EMAIL_DOMAIN ?? "university.edu";
 const emailAtConfiguredDomain = (localPart: string) => `${localPart}@${configuredDomain}`;
+const envKeys = [
+  "BETTER_GOV_OPENAI_API_KEY",
+  "BETTER_GOV_OPENAI_MODEL",
+  "BETTER_GOV_GEMINI_API_KEY",
+  "BETTER_GOV_GEMINI_MODEL",
+  "BETTER_GOV_GROK_API_KEY",
+  "BETTER_GOV_GROK_MODEL",
+];
+const savedEnv = new Map<string, string | undefined>();
 const propositionInput = (title: string) => ({
   title,
   category: "Student life",
@@ -36,12 +45,26 @@ beforeEach(() => {
   const tempDir = mkdtempSync(join(tmpdir(), "better-gov-"));
   dbPath = join(tempDir, "better-gov.sqlite");
   db = openVotingDatabase(dbPath);
+
+  for (const key of envKeys) {
+    savedEnv.set(key, process.env[key]);
+    delete process.env[key];
+  }
 });
 
 afterEach(() => {
   db.close();
   if (dbPath) {
     rmSync(dirname(dbPath), { recursive: true, force: true });
+  }
+
+  for (const key of envKeys) {
+    const value = savedEnv.get(key);
+    if (typeof value === "undefined") {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
   }
 });
 
@@ -221,5 +244,13 @@ describe("voting database", () => {
     expect(status.activePolicies.length).toBe(2);
     expect(openAiPolicies.length).toBe(2);
     expect(fetchCount).toBe(2);
+  });
+
+  it("keeps the automatic AI builder idle when no provider is configured", async () => {
+    const status = await reconcileAutomaticAiPolicies({ db });
+
+    expect(status.activeCount).toBe(0);
+    expect(status.canPublishNow).toBe(false);
+    expect(status.waitingReason).toContain("provider key");
   });
 });
