@@ -68,6 +68,7 @@ For local development:
 3. Run `npm run dev`.
 
 In that mode, the app shows the OTP in the dialog and logs it in the API console instead of sending a real email.
+It also allows development sign-in for any email under `BETTER_GOV_ALLOWED_EMAIL_DOMAIN`, even if that account is not in the seeded roster.
 
 For real email delivery:
 
@@ -100,6 +101,7 @@ The UI lets the signed-in user choose a provider and a student/staff perspective
 - The AI explainer is also gated by the session cookie and caches outputs by proposition content, audience role, and provider preference.
 - The API server seeds the proposition catalog and a small sample university roster into SQLite on startup.
 - The frontend no longer reads proposition detail or history data directly from hardcoded page-level arrays.
+- Production follow-ups are tracked in [`PRODUCTION_CHECKLIST.md`](PRODUCTION_CHECKLIST.md).
 
 ## Direction
 

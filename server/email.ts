@@ -4,6 +4,8 @@ const APP_URL = process.env.BETTER_GOV_APP_URL?.trim() ?? "http://127.0.0.1:8080
 const RESEND_API_KEY = process.env.RESEND_API_KEY?.trim() ?? "";
 const DEV_AUTH_CODES = process.env.NODE_ENV !== "production" || process.env.BETTER_GOV_DEV_AUTH_CODES === "1";
 
+export const isDevelopmentAuthEnabled = () => DEV_AUTH_CODES;
+
 export class EmailDeliveryError extends Error {
   constructor(message: string) {
     super(message);

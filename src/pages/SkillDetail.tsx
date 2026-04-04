@@ -220,8 +220,6 @@ const SkillDetail = () => {
   const currentVote = proposition?.myVote ?? null;
   const pendingVoteLabel = pendingVote ? pendingVote.charAt(0).toUpperCase() + pendingVote.slice(1) : "";
   const closesIn = proposition ? formatTimeLeft(proposition.closesAt, currentTime) : "";
-  const isAuthenticated = sessionQuery.data?.authenticated === true;
-  const activePerson = sessionQuery.data?.authenticated ? sessionQuery.data.person : null;
 
   const errorMessage =
     submitMutation.error instanceof VotingApiError

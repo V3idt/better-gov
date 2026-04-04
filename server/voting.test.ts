@@ -16,6 +16,8 @@ import {
 
 let dbPath = "";
 let db: ReturnType<typeof openVotingDatabase>;
+const configuredDomain = process.env.BETTER_GOV_ALLOWED_EMAIL_DOMAIN ?? "university.edu";
+const emailAtConfiguredDomain = (localPart: string) => `${localPart}@${configuredDomain}`;
 
 beforeEach(() => {
   const tempDir = mkdtempSync(join(tmpdir(), "better-gov-"));
@@ -48,8 +50,8 @@ describe("voting database", () => {
 
   it("keeps anonymous visitors unauthenticated until they verify a university email code", async () => {
     const anonymous = getSession(db, null);
-    const codeDelivery = await requestSignInCode(db, "rahel.bekele@university.edu");
-    const verified = verifySignInCode(db, "rahel.bekele@university.edu", codeDelivery.devCode ?? "");
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("rahel.bekele"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("rahel.bekele"), codeDelivery.devCode ?? "");
     const authenticated = getSession(db, verified.session.id);
 
     expect(anonymous.authenticated).toBe(false);
@@ -58,9 +60,18 @@ describe("voting database", () => {
     expect(authenticated.authenticated).toBe(true);
   });
 
+  it("allows any email under the configured domain during development auth mode", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("bdu1603334"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("bdu1603334"), codeDelivery.devCode ?? "");
+
+    expect(codeDelivery.devCode).toHaveLength(6);
+    expect(verified.person.displayName).toBe("Bdu1603334");
+    expect(verified.person.primaryRole).toBe("student");
+  });
+
   it("derives proposition support and the current account vote from stored votes", async () => {
-    const codeDelivery = await requestSignInCode(db, "leila.mekonnen@university.edu");
-    const verified = verifySignInCode(db, "leila.mekonnen@university.edu", codeDelivery.devCode ?? "");
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("leila.mekonnen"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("leila.mekonnen"), codeDelivery.devCode ?? "");
     const propositionId = "campus:transparent-department-budgets";
 
     submitVote(db, verified.session.id, propositionId, "approve");
@@ -77,8 +88,8 @@ describe("voting database", () => {
   });
 
   it("rejects invalid verification codes", async () => {
-    await requestSignInCode(db, "hana.tadesse@university.edu");
+    await requestSignInCode(db, emailAtConfiguredDomain("hana.tadesse"));
 
-    expect(() => verifySignInCode(db, "hana.tadesse@university.edu", "000000")).toThrow(VotingDatabaseError);
+    expect(() => verifySignInCode(db, emailAtConfiguredDomain("hana.tadesse"), "000000")).toThrow(VotingDatabaseError);
   });
 });

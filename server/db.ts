@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { EmailDeliveryError, sendSignInCodeEmail } from "./email.ts";
+import { EmailDeliveryError, isDevelopmentAuthEnabled, sendSignInCodeEmail } from "./email.ts";
 import { propositionSeeds } from "./proposition-seeds.ts";
 import type {
   AiAudienceRole,
@@ -39,13 +39,14 @@ const OTP_MAX_FAILED_ATTEMPTS = 5;
 const OTP_PEPPER = process.env.BETTER_GOV_OTP_PEPPER ?? "better-gov-local-dev-pepper";
 const ALLOWED_EMAIL_DOMAIN = (process.env.BETTER_GOV_ALLOWED_EMAIL_DOMAIN ?? "university.edu").toLowerCase();
 const CLOSING_SOON_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const rosterEmail = (localPart: string) => `${localPart}@${ALLOWED_EMAIL_DOMAIN}`;
 
 const ROSTER_MEMBERS = [
   {
     personId: "person_rahel_bekele",
     displayName: "Rahel Bekele",
     role: "dual" as const,
-    universityEmail: "rahel.bekele@university.edu",
+    universityEmail: rosterEmail("rahel.bekele"),
     studentId: "U-10204",
     staffId: "F-20014",
   },
@@ -53,7 +54,7 @@ const ROSTER_MEMBERS = [
     personId: "person_leila_mekonnen",
     displayName: "Leila Mekonnen",
     role: "student" as const,
-    universityEmail: "leila.mekonnen@university.edu",
+    universityEmail: rosterEmail("leila.mekonnen"),
     studentId: "U-10412",
     staffId: null,
   },
@@ -61,7 +62,7 @@ const ROSTER_MEMBERS = [
     personId: "person_samuel_abebe",
     displayName: "Samuel Abebe",
     role: "student" as const,
-    universityEmail: "samuel.abebe@university.edu",
+    universityEmail: rosterEmail("samuel.abebe"),
     studentId: "U-10733",
     staffId: null,
   },
@@ -69,7 +70,7 @@ const ROSTER_MEMBERS = [
     personId: "person_hana_tadesse",
     displayName: "Hana Tadesse",
     role: "staff" as const,
-    universityEmail: "hana.tadesse@university.edu",
+    universityEmail: rosterEmail("hana.tadesse"),
     studentId: null,
     staffId: "F-20408",
   },
@@ -228,6 +229,14 @@ const secureHashMatch = (storedHash: string, candidateHash: string) => {
 };
 
 const createOtpCode = () => randomInt(0, 10 ** OTP_LENGTH).toString().padStart(OTP_LENGTH, "0");
+
+const toDisplayNameFromEmail = (email: string) =>
+  normalizeEmail(email)
+    .split("@")[0]
+    ?.split(/[._-]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ") || "Campus member";
 
 const toPerson = (row: PersonRow): Person => ({
   id: row.id,
@@ -580,6 +589,20 @@ const loadRosterMemberByEmail = (db: Database, email: string) => {
   return row ?? null;
 };
 
+const loadRosterMemberByPersonId = (db: Database, personId: string) => {
+  const row = db
+    .prepare(
+      `
+        SELECT person_id, university_email, student_id, staff_id, role, status, created_at, updated_at
+        FROM roster_members
+        WHERE person_id = ?
+      `,
+    )
+    .get(personId) as RosterMemberRow | undefined;
+
+  return row ?? null;
+};
+
 const loadLatestEmailCode = (db: Database, email: string) => {
   const row = db
     .prepare(
@@ -751,6 +774,34 @@ const seedRoster = (db: Database) => {
   }
 };
 
+const ensureDevelopmentRosterMember = (db: Database, email: string) => {
+  const normalizedEmail = normalizeEmail(email);
+  const existing = loadRosterMemberByEmail(db, normalizedEmail);
+  if (existing) {
+    return existing;
+  }
+
+  if (!isDevelopmentAuthEnabled()) {
+    return null;
+  }
+
+  const timestamp = now();
+  const personId = randomId("person_dev");
+  db.prepare(personSql).run(personId, toDisplayNameFromEmail(normalizedEmail), "student", timestamp, timestamp);
+  db.prepare(rosterMemberSql).run(
+    personId,
+    normalizedEmail,
+    null,
+    null,
+    "student",
+    "active",
+    timestamp,
+    timestamp,
+  );
+
+  return loadRosterMemberByPersonId(db, personId);
+};
+
 const initializeDatabase = (db: Database) => {
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec("PRAGMA journal_mode = WAL;");
@@ -853,7 +904,7 @@ export const requestSignInCode = async (db: Database, email: string): Promise<Re
 
   const resendAvailableAt = toFutureIso(OTP_RESEND_COOLDOWN_MS);
   const expiresAt = toFutureIso(OTP_TTL_MS);
-  const rosterMember = loadRosterMemberByEmail(db, normalizedEmail);
+  const rosterMember = loadRosterMemberByEmail(db, normalizedEmail) ?? ensureDevelopmentRosterMember(db, normalizedEmail);
 
   if (!rosterMember || rosterMember.status !== "active") {
     return {
@@ -931,7 +982,7 @@ export const verifySignInCode = (db: Database, email: string, code: string): Ver
       throw new VotingDatabaseError("invalid_code", "Enter the 6-digit code.");
     }
 
-    const rosterMember = loadRosterMemberByEmail(db, normalizedEmail);
+  const rosterMember = loadRosterMemberByEmail(db, normalizedEmail) ?? ensureDevelopmentRosterMember(db, normalizedEmail);
     const latestCode = loadLatestEmailCode(db, normalizedEmail);
 
     if (!rosterMember || rosterMember.status !== "active" || !latestCode || latestCode.consumed_at) {

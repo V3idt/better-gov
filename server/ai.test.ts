@@ -12,6 +12,8 @@ import { getPolicyExplanation } from "./ai.ts";
 
 let dbPath = "";
 let db: ReturnType<typeof openVotingDatabase>;
+const configuredDomain = process.env.BETTER_GOV_ALLOWED_EMAIL_DOMAIN ?? "university.edu";
+const emailAtConfiguredDomain = (localPart: string) => `${localPart}@${configuredDomain}`;
 const envKeys = [
   "BETTER_GOV_OPENAI_API_KEY",
   "BETTER_GOV_OPENAI_MODEL",
@@ -61,8 +63,8 @@ describe("policy AI explainer", () => {
   });
 
   it("falls back to the next configured provider when the selected one fails", async () => {
-    const codeDelivery = await requestSignInCode(db, "rahel.bekele@university.edu");
-    const verified = verifySignInCode(db, "rahel.bekele@university.edu", codeDelivery.devCode ?? "");
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("rahel.bekele"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("rahel.bekele"), codeDelivery.devCode ?? "");
 
     process.env.BETTER_GOV_OPENAI_API_KEY = "openai-test-key";
     process.env.BETTER_GOV_GEMINI_API_KEY = "gemini-test-key";
@@ -114,8 +116,8 @@ describe("policy AI explainer", () => {
   });
 
   it("reuses the cached explanation for the same policy, role, and provider preference", async () => {
-    const codeDelivery = await requestSignInCode(db, "leila.mekonnen@university.edu");
-    const verified = verifySignInCode(db, "leila.mekonnen@university.edu", codeDelivery.devCode ?? "");
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("leila.mekonnen"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("leila.mekonnen"), codeDelivery.devCode ?? "");
 
     process.env.BETTER_GOV_OPENAI_API_KEY = "openai-test-key";
 
@@ -166,8 +168,8 @@ describe("policy AI explainer", () => {
   });
 
   it("returns a deterministic fallback when no provider is configured", async () => {
-    const codeDelivery = await requestSignInCode(db, "hana.tadesse@university.edu");
-    const verified = verifySignInCode(db, "hana.tadesse@university.edu", codeDelivery.devCode ?? "");
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("hana.tadesse"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("hana.tadesse"), codeDelivery.devCode ?? "");
 
     const result = await getPolicyExplanation({
       db,
