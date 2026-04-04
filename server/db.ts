@@ -1961,7 +1961,10 @@ export const getPropositionDetailById = (
   };
 };
 
-const validateCreatePropositionInput = (input: CreatePropositionInput) => {
+const validateCreatePropositionInput = (
+  input: CreatePropositionInput,
+  options: { allowShortCloseTime?: boolean } = {},
+) => {
   const title = normalizeText(input.title);
   const category = normalizeText(input.category);
   const scope = normalizeText(input.scope);
@@ -2024,7 +2027,8 @@ const validateCreatePropositionInput = (input: CreatePropositionInput) => {
   }
 
   const closeOffset = closesAtMs - Date.now();
-  if (closeOffset < PROPOSITION_MIN_CLOSE_OFFSET_MS) {
+  const minimumCloseOffset = options.allowShortCloseTime ? 15 * 1000 : PROPOSITION_MIN_CLOSE_OFFSET_MS;
+  if (closeOffset < minimumCloseOffset) {
     throw new VotingDatabaseError("invalid_request", "Closing time must be at least one hour in the future.");
   }
 
@@ -2050,10 +2054,10 @@ export const createProposition = (
   clientIpAddress: string | null,
 ): CreatePropositionResponse => {
   const session = requireSessionContext(db, sessionId);
-  const validated = validateCreatePropositionInput(input);
   const ipHash = clientIpAddress ? hashRateLimitValue(clientIpAddress) : null;
   const submissionWindowStart = new Date(Date.now() - PROPOSITION_SUBMISSION_WINDOW_MS).toISOString();
   const isAiAutomation = session.person.id === AI_SYSTEM_PERSON_ID;
+  const validated = validateCreatePropositionInput(input, { allowShortCloseTime: isAiAutomation });
 
   return db.transaction(() => {
     if (!isAiAutomation) {

@@ -32,6 +32,7 @@ const PROMPT_VERSION = "2026-04-04-v1";
 const DRAFT_PROMPT_VERSION = "2026-04-04-draft-v2";
 const DEFAULT_PROVIDER_ORDER: Exclude<AiProviderPreference, "auto">[] = ["gemini", "openai", "grok"];
 const DRAFT_CLOSE_OFFSET_MS = 60 * 24 * 60 * 60 * 1000;
+const AUTO_DRAFT_CLOSE_OFFSET_MS = 30 * 1000;
 
 const explanationSchema = z.object({
   explanation: z.string().min(1),
@@ -1355,7 +1356,9 @@ export const getPolicyDraft = async ({
           tldr: draft.tldr,
           bullets: draft.bullets,
           brief: buildAiPolicyBrief(draft, sourceDetails),
-          closesAt: new Date(Date.now() + DRAFT_CLOSE_OFFSET_MS).toISOString(),
+          closesAt: new Date(
+            Date.now() + (sessionId === AI_SYSTEM_SESSION_ID ? AUTO_DRAFT_CLOSE_OFFSET_MS : DRAFT_CLOSE_OFFSET_MS),
+          ).toISOString(),
         },
         clientIpAddress,
       );

@@ -26,7 +26,7 @@ const Audits = () => {
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   useEffect(() => {
-    const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
+    const interval = window.setInterval(() => setCurrentTime(Date.now()), 1_000);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -38,7 +38,7 @@ const Audits = () => {
   const builderQuery = useQuery({
     queryKey: aiPolicyBuilderStatusQueryKey,
     queryFn: getAiPolicyBuilderStatus,
-    refetchInterval: 60_000,
+    refetchInterval: 5_000,
   });
 
   const propositions = historyQuery.data?.propositions ?? [];
