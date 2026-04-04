@@ -118,6 +118,24 @@ export type PropositionAiExplanationRequest = {
 
 export type PropositionAiExplanationResponse = PropositionAiExplanation;
 
+export type PropositionAiChatRequest = {
+  role: AiAudienceRole;
+  provider?: AiProviderPreference;
+  question: string;
+};
+
+export type PropositionAiChatResponse = {
+  propositionId: string;
+  role: AiAudienceRole;
+  requestedProvider: AiProviderPreference;
+  providerUsed: AiProviderUsed;
+  cached: boolean;
+  generatedAt: string;
+  question: string;
+  answer: string;
+  sourcesUsed: string[];
+};
+
 export type AuthenticatedSessionResponse = {
   authenticated: true;
   session: SessionRecord;

@@ -1,12 +1,13 @@
 import Navbar from "@/components/Navbar";
 import { Link, useParams } from "react-router-dom";
 import { ChevronDown, Copy, FileText, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import AccountDialog from "@/components/AccountDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,12 +26,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Textarea } from "@/components/ui/textarea";
 import {
   formatCompactCount,
   formatSupportPercent,
   type AiAudienceRole,
   type AiProviderPreference,
+  type AiProviderUsed,
   propositionPathFromParts,
   type PropositionReviewCheck,
   type VoteChoice,
@@ -38,6 +42,7 @@ import {
 } from "@/lib/voting";
 import {
   getPropositionAiExplanation,
+  getPropositionAiChatAnswer,
   getPropositionByPath,
   getSession,
   propositionHistoryQueryKey,
@@ -94,6 +99,15 @@ const aiProviderLabel = (provider: AiProviderPreference | "fallback") => {
 
 const aiRoleLabel = (role: AiAudienceRole) => (role === "student" ? "Student" : "Staff");
 
+type AiChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  providerUsed?: AiProviderUsed;
+  cached?: boolean;
+  generatedAt?: string;
+};
+
 const splitPillClass = (label: string) => {
   if (label === "Approve") return "text-green-500 bg-green-500/10";
   if (label === "Reject") return "text-red-500 bg-red-500/10";
@@ -140,6 +154,9 @@ const SkillDetail = () => {
   const [aiOpen, setAiOpen] = useState(false);
   const [aiRole, setAiRole] = useState<AiAudienceRole>("student");
   const [aiProvider, setAiProvider] = useState<AiProviderPreference>("auto");
+  const [aiChatMessages, setAiChatMessages] = useState<AiChatMessage[]>([]);
+  const [aiChatDraft, setAiChatDraft] = useState("");
+  const [aiChatErrorMessage, setAiChatErrorMessage] = useState("");
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -173,6 +190,12 @@ const SkillDetail = () => {
     setAiRole(activePerson.primaryRole === "staff" ? "staff" : "student");
   }, [activePerson]);
 
+  useEffect(() => {
+    setAiChatMessages([]);
+    setAiChatDraft("");
+    setAiChatErrorMessage("");
+  }, [proposition?.id, aiRole, aiProvider]);
+
   const aiQuery = useQuery({
     queryKey: proposition
       ? propositionAiQueryKey(proposition.id, aiRole, aiProvider)
@@ -189,6 +212,20 @@ const SkillDetail = () => {
     },
     enabled: Boolean(proposition) && aiOpen && isAuthenticated,
     staleTime: 5 * 60 * 1000,
+  });
+
+  const aiChatMutation = useMutation({
+    mutationFn: (question: string) => {
+      if (!proposition) {
+        throw new Error("Proposition not loaded.");
+      }
+
+      return getPropositionAiChatAnswer(proposition.id, {
+        role: aiRole,
+        provider: aiProvider,
+        question,
+      });
+    },
   });
 
   const submitMutation = useMutation({
@@ -241,6 +278,48 @@ const SkillDetail = () => {
       : aiQuery.error instanceof Error
         ? aiQuery.error.message
         : "We couldn't reach the AI provider. Try again once the provider is configured.";
+
+  const handleChatSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const question = aiChatDraft.trim();
+    if (!question || aiChatMutation.isPending) {
+      return;
+    }
+
+    const userMessage: AiChatMessage = {
+      id: `user_${Date.now()}`,
+      role: "user",
+      content: question,
+    };
+
+    setAiChatMessages((messages) => [...messages, userMessage]);
+    setAiChatDraft("");
+    setAiChatErrorMessage("");
+
+    try {
+      const answer = await aiChatMutation.mutateAsync(question);
+      setAiChatMessages((messages) => [
+        ...messages,
+        {
+          id: `assistant_${Date.now()}`,
+          role: "assistant",
+          content: answer.answer,
+          providerUsed: answer.providerUsed,
+          cached: answer.cached,
+          generatedAt: answer.generatedAt,
+        },
+      ]);
+    } catch (error) {
+      setAiChatErrorMessage(
+        error instanceof VotingApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "We couldn't reach the AI provider. Try again once the provider is configured.",
+      );
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground font-mono">
@@ -375,6 +454,21 @@ const SkillDetail = () => {
                   )}
                 </div>
 
+                <div className="mb-6 rounded-lg border border-border p-5">
+                  <h3 className="mb-3 text-xs uppercase tracking-wider text-muted-foreground">tl;dr</h3>
+                  <p className="mb-3 text-sm font-semibold text-foreground">{proposition.tldr}</p>
+                  {proposition.bullets.length > 0 ? (
+                    <ul className="space-y-2">
+                      {proposition.bullets.map((bullet, index) => (
+                        <li key={index} className="flex gap-2 text-sm text-muted-foreground">
+                          <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-muted-foreground" />
+                          {bullet}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+
                 <Collapsible open={aiOpen} onOpenChange={setAiOpen}>
                   <Card className="mb-6 border-border bg-secondary/20">
                     <CardHeader className="space-y-4 border-b border-border p-5">
@@ -385,7 +479,7 @@ const SkillDetail = () => {
                             AI explainer
                           </CardTitle>
                           <CardDescription className="max-w-2xl leading-relaxed">
-                            Get a plain-language explanation, the upside, the downside, and the likely impact for a student or staff view.
+                            Read the plain-language summary first, then ask follow-up questions if you are still confused about the policy.
                           </CardDescription>
                         </div>
                         <CollapsibleTrigger asChild>
@@ -443,84 +537,169 @@ const SkillDetail = () => {
                               </div>
                             </div>
 
-                            {aiQuery.isLoading ? (
-                              <div className="space-y-3 rounded border border-border bg-background/60 p-4 text-sm text-muted-foreground">
-                                <div className="h-4 w-40 animate-pulse rounded bg-muted/40" />
-                                <div className="h-3 w-full animate-pulse rounded bg-muted/30" />
-                                <div className="h-3 w-11/12 animate-pulse rounded bg-muted/30" />
-                                <div className="h-3 w-10/12 animate-pulse rounded bg-muted/30" />
-                              </div>
-                            ) : aiQuery.isError ? (
-                              <div className="rounded border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-500">
-                                {aiErrorMessage || "Could not generate an explanation right now."}
-                              </div>
-                            ) : aiQuery.data ? (
-                              <div className="space-y-4">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
-                                    {aiProviderLabel(aiQuery.data.providerUsed)}
-                                  </Badge>
-                                  <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
-                                    {aiRoleLabel(aiQuery.data.role)}
-                                  </Badge>
-                                  <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
-                                    {aiQuery.data.cached ? "cached" : "live"}
-                                  </Badge>
-                                </div>
+                            <Tabs defaultValue="explain" className="space-y-4">
+                              <TabsList className="grid w-full grid-cols-2 bg-background/60">
+                                <TabsTrigger value="explain" className="font-mono text-xs uppercase tracking-[0.16em]">
+                                  Explain
+                                </TabsTrigger>
+                                <TabsTrigger value="chat" className="font-mono text-xs uppercase tracking-[0.16em]">
+                                  Chat
+                                </TabsTrigger>
+                              </TabsList>
 
-                                <div className="rounded border border-border bg-background/60 p-4">
-                                  <p className="mb-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">Explanation</p>
-                                  <p className="text-sm leading-relaxed text-foreground">{aiQuery.data.explanation}</p>
-                                </div>
-
-                                <div className="grid gap-4 lg:grid-cols-2">
-                                  <div className="rounded border border-border bg-background/60 p-4">
-                                    <p className="mb-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">Advantages</p>
-                                    <ul className="space-y-2">
-                                      {aiQuery.data.advantages.map((item) => (
-                                        <li key={item} className="flex gap-2 text-sm text-foreground">
-                                          <span className="mt-1.5 h-1 w-1 rounded-full bg-foreground/60" />
-                                          <span>{item}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
+                              <TabsContent value="explain" className="mt-0 space-y-4">
+                                {aiQuery.isLoading ? (
+                                  <div className="space-y-3 rounded border border-border bg-background/60 p-4 text-sm text-muted-foreground">
+                                    <div className="h-4 w-40 animate-pulse rounded bg-muted/40" />
+                                    <div className="h-3 w-full animate-pulse rounded bg-muted/30" />
+                                    <div className="h-3 w-11/12 animate-pulse rounded bg-muted/30" />
+                                    <div className="h-3 w-10/12 animate-pulse rounded bg-muted/30" />
                                   </div>
-
-                                  <div className="rounded border border-border bg-background/60 p-4">
-                                    <p className="mb-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">Disadvantages</p>
-                                    <ul className="space-y-2">
-                                      {aiQuery.data.disadvantages.map((item) => (
-                                        <li key={item} className="flex gap-2 text-sm text-foreground">
-                                          <span className="mt-1.5 h-1 w-1 rounded-full bg-foreground/60" />
-                                          <span>{item}</span>
-                                        </li>
-                                      ))}
-                                    </ul>
+                                ) : aiQuery.isError ? (
+                                  <div className="rounded border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-500">
+                                    {aiErrorMessage || "Could not generate an explanation right now."}
                                   </div>
-                                </div>
-
-                                <div className="rounded border border-border bg-background/60 p-4">
-                                  <p className="mb-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">Impact</p>
-                                  <p className="text-sm leading-relaxed text-foreground">{aiQuery.data.impact}</p>
-                                </div>
-
-                                <div className="rounded border border-border bg-background/60 p-4">
-                                  <p className="mb-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">Sources used</p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {aiQuery.data.sourcesUsed.map((source) => (
-                                      <Badge key={source} variant="outline" className="border-border bg-secondary/30 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                                        {source}
+                                ) : aiQuery.data ? (
+                                  <div className="space-y-4">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
+                                        {aiProviderLabel(aiQuery.data.providerUsed)}
                                       </Badge>
-                                    ))}
+                                      <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
+                                        {aiRoleLabel(aiQuery.data.role)}
+                                      </Badge>
+                                      <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.16em]">
+                                        {aiQuery.data.cached ? "cached" : "live"}
+                                      </Badge>
+                                    </div>
+
+                                    <div className="rounded border border-border bg-background/60 p-4">
+                                      <p className="mb-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">Explanation</p>
+                                      <p className="text-sm leading-relaxed text-foreground">{aiQuery.data.explanation}</p>
+                                    </div>
+
+                                    <div className="grid gap-4 lg:grid-cols-2">
+                                      <div className="rounded border border-border bg-background/60 p-4">
+                                        <p className="mb-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">Advantages</p>
+                                        <ul className="space-y-2">
+                                          {aiQuery.data.advantages.map((item) => (
+                                            <li key={item} className="flex gap-2 text-sm text-foreground">
+                                              <span className="mt-1.5 h-1 w-1 rounded-full bg-foreground/60" />
+                                              <span>{item}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+
+                                      <div className="rounded border border-border bg-background/60 p-4">
+                                        <p className="mb-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">Disadvantages</p>
+                                        <ul className="space-y-2">
+                                          {aiQuery.data.disadvantages.map((item) => (
+                                            <li key={item} className="flex gap-2 text-sm text-foreground">
+                                              <span className="mt-1.5 h-1 w-1 rounded-full bg-foreground/60" />
+                                              <span>{item}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    </div>
+
+                                    <div className="rounded border border-border bg-background/60 p-4">
+                                      <p className="mb-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">Impact</p>
+                                      <p className="text-sm leading-relaxed text-foreground">{aiQuery.data.impact}</p>
+                                    </div>
+
+                                    <div className="rounded border border-border bg-background/60 p-4">
+                                      <p className="mb-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">Sources used</p>
+                                      <div className="flex flex-wrap gap-2">
+                                        {aiQuery.data.sourcesUsed.map((source) => (
+                                          <Badge key={source} variant="outline" className="border-border bg-secondary/30 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                                            {source}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    </div>
                                   </div>
+                                ) : null}
+                              </TabsContent>
+
+                              <TabsContent value="chat" className="mt-0 space-y-4">
+                                <div className="rounded border border-border bg-background/60 p-4">
+                                  <p className="mb-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">Chat</p>
+                                  <p className="text-sm leading-relaxed text-muted-foreground">
+                                    Ask a follow-up about what the policy changes, who it affects, or what a term means. Each answer uses the same policy context as the explainer.
+                                  </p>
                                 </div>
-                              </div>
-                            ) : null}
+
+                                <div className="rounded border border-border bg-background/60">
+                                  <ScrollArea className="h-80">
+                                    <div className="space-y-4 p-4">
+                                      {aiChatMessages.length ? (
+                                        aiChatMessages.map((message) => (
+                                          <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                                            <div className={`max-w-[85%] rounded border px-4 py-3 ${message.role === "user" ? "border-border bg-secondary/60" : "border-border bg-background/70"}`}>
+                                              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                                                  {message.role === "user" ? "You" : "AI"}
+                                                </p>
+                                                {message.role === "assistant" ? (
+                                                  <div className="flex flex-wrap items-center gap-2">
+                                                    <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.14em]">
+                                                      {aiProviderLabel(message.providerUsed ?? "fallback")}
+                                                    </Badge>
+                                                    <Badge variant="outline" className="border-border bg-background/60 font-mono uppercase tracking-[0.14em]">
+                                                      {message.cached ? "cached" : "live"}
+                                                    </Badge>
+                                                  </div>
+                                                ) : null}
+                                              </div>
+                                              <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{message.content}</p>
+                                            </div>
+                                          </div>
+                                        ))
+                                      ) : (
+                                        <div className="rounded border border-dashed border-border bg-background/40 p-4 text-sm leading-relaxed text-muted-foreground">
+                                          Ask a follow-up question after reading the audience view. The answer will appear here.
+                                        </div>
+                                      )}
+                                    </div>
+                                  </ScrollArea>
+                                </div>
+
+                                <form onSubmit={handleChatSubmit} className="space-y-3 rounded border border-border bg-background/60 p-4">
+                                  <Textarea
+                                    value={aiChatDraft}
+                                    onChange={(event) => {
+                                      setAiChatDraft(event.target.value);
+                                      if (aiChatErrorMessage) {
+                                        setAiChatErrorMessage("");
+                                      }
+                                    }}
+                                    placeholder="Ask a follow-up question..."
+                                    disabled={aiChatMutation.isPending}
+                                    className="min-h-[110px] border-border bg-background/70 font-mono text-sm text-foreground placeholder:text-muted-foreground/70 focus-visible:ring-0"
+                                  />
+                                  <div className="flex items-center justify-between gap-3">
+                                    <p className="text-xs text-muted-foreground">
+                                      Stateless chat: each question is answered from the current policy context and audience view.
+                                    </p>
+                                    <Button
+                                      type="submit"
+                                      disabled={aiChatMutation.isPending || !aiChatDraft.trim()}
+                                      className="bg-foreground text-background hover:bg-foreground/90"
+                                    >
+                                      {aiChatMutation.isPending ? "Sending..." : "Send"}
+                                    </Button>
+                                  </div>
+                                  {aiChatErrorMessage ? <p className="text-sm text-red-500">{aiChatErrorMessage}</p> : null}
+                                </form>
+                              </TabsContent>
+                            </Tabs>
                           </>
                         ) : (
                           <div className="rounded border border-border bg-background/60 p-4">
                             <p className="text-sm leading-relaxed text-muted-foreground">
-                              Sign in with your university account to use the AI explainer. It stays behind the same session gate as voting.
+                              Sign in with your university account to use the AI explainer and chat. It stays behind the same session gate as voting.
                             </p>
                             <Button
                               type="button"
@@ -536,21 +715,6 @@ const SkillDetail = () => {
                     </CollapsibleContent>
                   </Card>
                 </Collapsible>
-
-                <div className="mb-6 rounded-lg border border-border p-5">
-                  <h3 className="mb-3 text-xs uppercase tracking-wider text-muted-foreground">tl;dr</h3>
-                  <p className="mb-3 text-sm font-semibold text-foreground">{proposition.tldr}</p>
-                  {proposition.bullets.length > 0 ? (
-                    <ul className="space-y-2">
-                      {proposition.bullets.map((bullet, index) => (
-                        <li key={index} className="flex gap-2 text-sm text-muted-foreground">
-                          <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-muted-foreground" />
-                          {bullet}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
 
                 <div className="mb-4 flex items-center gap-2 border-b border-border pb-3 text-sm text-muted-foreground">
                   <FileText className="h-4 w-4" aria-hidden="true" />

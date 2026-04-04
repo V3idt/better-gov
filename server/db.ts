@@ -9,6 +9,7 @@ import type {
   AiProviderPreference,
   CreatePropositionInput,
   CreatePropositionResponse,
+  PropositionAiChatResponse,
   PropositionAiExplanation,
   Person,
   PropositionDetail,
@@ -166,6 +167,20 @@ type AiExplanationRow = {
   content_hash: string;
   prompt_version: string;
   explanation_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type AiChatAnswerRow = {
+  id: number;
+  policy_id: string;
+  audience_role: AiAudienceRole;
+  requested_provider: AiProviderPreference;
+  provider_used: PropositionAiChatResponse["providerUsed"];
+  question_hash: string;
+  content_hash: string;
+  prompt_version: string;
+  answer_json: string;
   created_at: string;
   updated_at: string;
 };
@@ -431,6 +446,27 @@ const aiExplanationSql = `
     updated_at = excluded.updated_at
 `;
 
+const aiChatAnswerSql = `
+  INSERT INTO ai_chat_answers (
+    policy_id,
+    audience_role,
+    requested_provider,
+    provider_used,
+    question_hash,
+    content_hash,
+    prompt_version,
+    answer_json,
+    created_at,
+    updated_at
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(policy_id, audience_role, requested_provider, question_hash, content_hash, prompt_version)
+  DO UPDATE SET
+    provider_used = excluded.provider_used,
+    answer_json = excluded.answer_json,
+    updated_at = excluded.updated_at
+`;
+
 const propositionSubmissionLogSql = `
   INSERT INTO proposition_submission_log (person_id, ip_hash, created_at)
   VALUES (?, ?, ?)
@@ -538,6 +574,34 @@ const loadAiExplanation = (
   return JSON.parse(row.explanation_json) as PropositionAiExplanation;
 };
 
+const loadAiChatAnswer = (
+  db: Database,
+  propositionId: string,
+  audienceRole: AiAudienceRole,
+  requestedProvider: AiProviderPreference,
+  questionHash: string,
+  contentHash: string,
+  promptVersion: string,
+) => {
+  const row = db
+    .prepare(
+      `
+        SELECT id, policy_id, audience_role, requested_provider, provider_used, question_hash, content_hash, prompt_version, answer_json, created_at, updated_at
+        FROM ai_chat_answers
+        WHERE policy_id = ? AND audience_role = ? AND requested_provider = ? AND question_hash = ? AND content_hash = ? AND prompt_version = ?
+      `,
+    )
+    .get(propositionId, audienceRole, requestedProvider, questionHash, contentHash, promptVersion) as
+    | AiChatAnswerRow
+    | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  return JSON.parse(row.answer_json) as PropositionAiChatResponse;
+};
+
 const saveAiExplanation = (
   db: Database,
   explanation: PropositionAiExplanation,
@@ -553,6 +617,28 @@ const saveAiExplanation = (
     contentHash,
     promptVersion,
     JSON.stringify(explanation),
+    timestamp,
+    timestamp,
+  );
+};
+
+const saveAiChatAnswer = (
+  db: Database,
+  answer: PropositionAiChatResponse,
+  questionHash: string,
+  contentHash: string,
+  promptVersion: string,
+) => {
+  const timestamp = now();
+  db.prepare(aiChatAnswerSql).run(
+    answer.propositionId,
+    answer.role,
+    answer.requestedProvider,
+    answer.providerUsed,
+    questionHash,
+    contentHash,
+    promptVersion,
+    JSON.stringify(answer),
     timestamp,
     timestamp,
   );
@@ -1405,6 +1491,24 @@ export const storeAiExplanation = (
   contentHash: string,
   promptVersion: string,
 ) => saveAiExplanation(db, explanation, contentHash, promptVersion);
+
+export const getCachedAiChatAnswer = (
+  db: Database,
+  propositionId: string,
+  audienceRole: AiAudienceRole,
+  requestedProvider: AiProviderPreference,
+  questionHash: string,
+  contentHash: string,
+  promptVersion: string,
+) => loadAiChatAnswer(db, propositionId, audienceRole, requestedProvider, questionHash, contentHash, promptVersion);
+
+export const storeAiChatAnswer = (
+  db: Database,
+  answer: PropositionAiChatResponse,
+  questionHash: string,
+  contentHash: string,
+  promptVersion: string,
+) => saveAiChatAnswer(db, answer, questionHash, contentHash, promptVersion);
 
 export const submitVote = (
   db: Database,

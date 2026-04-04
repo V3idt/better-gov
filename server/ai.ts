@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import {
   getCachedAiExplanation,
+  getCachedAiChatAnswer,
   getPropositionDetailById,
   getResolvedSession,
   storeAiExplanation,
+  storeAiChatAnswer,
   type VotingDatabase,
   VotingDatabaseError,
 } from "./db.ts";
@@ -11,6 +13,7 @@ import type {
   AiAudienceRole,
   AiProviderPreference,
   AiProviderUsed,
+  PropositionAiChatResponse,
   PropositionAiExplanation,
   PropositionDetail,
 } from "../src/lib/voting.ts";
@@ -24,6 +27,10 @@ const explanationSchema = z.object({
   advantages: z.array(z.string().min(1)).min(1).max(5),
   disadvantages: z.array(z.string().min(1)).min(1).max(5),
   impact: z.string().min(1),
+});
+
+const chatAnswerSchema = z.object({
+  answer: z.string().min(1),
 });
 
 const explanationJsonSchema = {
@@ -51,6 +58,16 @@ const explanationJsonSchema = {
   required: ["explanation", "advantages", "disadvantages", "impact"],
 } as const;
 
+const chatAnswerJsonSchema = {
+  type: "object",
+  properties: {
+    answer: {
+      type: "string",
+    },
+  },
+  required: ["answer"],
+} as const;
+
 type ProviderConfig = {
   provider: Exclude<AiProviderPreference, "auto">;
   model: string;
@@ -64,6 +81,10 @@ type BuildExplanationInput = {
   role: AiAudienceRole;
   providerPreference?: AiProviderPreference;
   fetchImpl?: typeof fetch;
+};
+
+type BuildChatInput = BuildExplanationInput & {
+  question: string;
 };
 
 function parseProviderOrder(value: string | undefined) {
@@ -141,6 +162,11 @@ const hashPropositionContext = (detail: PropositionDetail) =>
     )
     .digest("hex");
 
+const hashChatQuestion = (question: string) =>
+  createHash("sha256")
+    .update(question.trim().toLowerCase().replace(/\s+/g, " "))
+    .digest("hex");
+
 const sourcesUsedForDetail = (detail: PropositionDetail) => [
   `Title: ${detail.title}`,
   `TL;DR: ${detail.tldr}`,
@@ -174,6 +200,35 @@ const buildPrompt = (detail: PropositionDetail, role: AiAudienceRole) => {
     "",
     "Full brief:",
     detail.brief,
+  ].join("\n");
+};
+
+const buildChatPrompt = (detail: PropositionDetail, role: AiAudienceRole, question: string) => {
+  const roleLabel = role === "student" ? "student" : "staff member";
+
+  return [
+    "You are helping a university voter understand one policy.",
+    "Use only the policy information provided below.",
+    "Stay balanced and factual.",
+    "Do not tell the user how to vote.",
+    "Write in plain language for a confused non-expert.",
+    `Answer the user as a ${roleLabel}.`,
+    "Return valid JSON only with this key: answer.",
+    "Keep the answer concise but useful.",
+    "",
+    `Policy title: ${detail.title}`,
+    `Policy path: ${detail.path}`,
+    `Jurisdiction: ${detail.jurisdiction}`,
+    `Category: ${detail.category}`,
+    `Scope: ${detail.scope}`,
+    `TL;DR: ${detail.tldr}`,
+    `Quick read: ${detail.reviewChecks.map((check) => `${check.name}=${check.status}`).join(", ")}`,
+    `Bullet points: ${detail.bullets.map((bullet) => `- ${bullet}`).join("\n")}`,
+    "",
+    "Full brief:",
+    detail.brief,
+    "",
+    `User question: ${question.trim()}`,
   ].join("\n");
 };
 
@@ -250,6 +305,16 @@ const parseExplanationPayload = (raw: string) => {
   } catch {
     const repaired = escapeControlCharsInJsonStrings(jsonText);
     return explanationSchema.parse(JSON.parse(repaired) as unknown);
+  }
+};
+
+const parseChatPayload = (raw: string) => {
+  const jsonText = extractJsonText(raw);
+  try {
+    return chatAnswerSchema.parse(JSON.parse(jsonText) as unknown);
+  } catch {
+    const repaired = escapeControlCharsInJsonStrings(jsonText);
+    return chatAnswerSchema.parse(JSON.parse(repaired) as unknown);
   }
 };
 
@@ -393,6 +458,146 @@ const grokExplanation = async (
   return parseExplanationPayload(content);
 };
 
+const openAiChat = async (
+  config: ProviderConfig,
+  prompt: string,
+  fetchImpl: typeof fetch,
+) => {
+  const response = await fetchImpl("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.model,
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Return only valid JSON with key answer. Do not include markdown fences.",
+        },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenAI request failed with status ${response.status}.`);
+  }
+
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>;
+  };
+  const content = payload.choices?.[0]?.message?.content ?? "";
+  if (!content.trim()) {
+    throw new Error("OpenAI returned an empty answer.");
+  }
+
+  return parseChatPayload(content);
+};
+
+const geminiChat = async (
+  config: ProviderConfig,
+  prompt: string,
+  fetchImpl: typeof fetch,
+) => {
+  const url = new URL(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`,
+  );
+  url.searchParams.set("key", config.apiKey);
+
+  const response = await fetchImpl(
+    url.toString(),
+    {
+      method: "POST",
+      headers: {
+        "x-goog-api-key": config.apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: `Return only valid JSON with key answer.\n\n${prompt}` }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 768,
+          responseMimeType: "application/json",
+          responseJsonSchema: chatAnswerJsonSchema,
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(`Gemini request failed with status ${response.status}${message ? `: ${message}` : "."}`);
+  }
+
+  const payload = (await response.json()) as {
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{ text?: string | null }>;
+      };
+    }>;
+  };
+  const content =
+    payload.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text ?? "")
+      .join("")
+      .trim() ?? "";
+
+  if (!content) {
+    throw new Error("Gemini returned an empty answer.");
+  }
+
+  return parseChatPayload(content);
+};
+
+const grokChat = async (
+  config: ProviderConfig,
+  prompt: string,
+  fetchImpl: typeof fetch,
+) => {
+  const response = await fetchImpl("https://api.x.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.model,
+      temperature: 0.2,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Return only valid JSON with key answer. Do not include markdown fences.",
+        },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Grok request failed with status ${response.status}.`);
+  }
+
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>;
+  };
+  const content = payload.choices?.[0]?.message?.content ?? "";
+  if (!content.trim()) {
+    throw new Error("Grok returned an empty answer.");
+  }
+
+  return parseChatPayload(content);
+};
+
 const providerExplanation = async (
   provider: Exclude<AiProviderPreference, "auto">,
   prompt: string,
@@ -414,12 +619,44 @@ const providerExplanation = async (
   return grokExplanation(config, prompt, fetchImpl);
 };
 
+const providerChat = async (
+  provider: Exclude<AiProviderPreference, "auto">,
+  prompt: string,
+  fetchImpl: typeof fetch,
+) => {
+  const config = getProviderConfig(provider);
+  if (!config) {
+    throw new Error(`${provider} is not configured.`);
+  }
+
+  if (provider === "openai") {
+    return openAiChat(config, prompt, fetchImpl);
+  }
+
+  if (provider === "gemini") {
+    return geminiChat(config, prompt, fetchImpl);
+  }
+
+  return grokChat(config, prompt, fetchImpl);
+};
+
 const buildResponse = (
   explanation: Omit<PropositionAiExplanation, "cached" | "generatedAt">,
   providerUsed: AiProviderUsed,
   cached: boolean,
 ): PropositionAiExplanation => ({
   ...explanation,
+  providerUsed,
+  cached,
+  generatedAt: new Date().toISOString(),
+});
+
+const buildChatResponse = (
+  answer: Omit<PropositionAiChatResponse, "cached" | "generatedAt">,
+  providerUsed: AiProviderUsed,
+  cached: boolean,
+): PropositionAiChatResponse => ({
+  ...answer,
   providerUsed,
   cached,
   generatedAt: new Date().toISOString(),
@@ -473,6 +710,67 @@ export const getPolicyExplanation = async ({
       return payload;
     } catch (error) {
       console.error(`[ai] ${provider} explanation failed`, error);
+    }
+  }
+
+  throw new VotingDatabaseError(
+    "delivery_failed",
+    "Unable to reach an AI provider. Please ensure at least one provider key is configured.",
+  );
+};
+
+export const getPolicyChatAnswer = async ({
+  db,
+  sessionId,
+  propositionId,
+  role,
+  providerPreference,
+  question,
+  fetchImpl = fetch,
+}: BuildChatInput): Promise<PropositionAiChatResponse> => {
+  const session = getResolvedSession(db, sessionId);
+  if (!session) {
+    throw new VotingDatabaseError("authentication_required", "Sign in with a university account to use the AI chat.");
+  }
+
+  if (!question.trim()) {
+    throw new VotingDatabaseError("invalid_request", "Ask a question to get started.");
+  }
+
+  const detail = getPropositionDetailById(db, sessionId, propositionId).proposition;
+  const requestedProvider = normalizeProviderPreference(providerPreference);
+  const contentHash = hashPropositionContext(detail);
+  const questionHash = hashChatQuestion(question);
+  const cached = getCachedAiChatAnswer(db, propositionId, role, requestedProvider, questionHash, contentHash, PROMPT_VERSION);
+  if (cached) {
+    return {
+      ...cached,
+      cached: true,
+    };
+  }
+
+  const prompt = buildChatPrompt(detail, role, question);
+  const providers = getProviderCandidates(requestedProvider);
+
+  for (const provider of providers) {
+    try {
+      const parsed = await providerChat(provider, prompt, fetchImpl);
+      const payload = buildChatResponse(
+        {
+          propositionId: detail.id,
+          role,
+          requestedProvider,
+          question: question.trim(),
+          answer: parsed.answer,
+          sourcesUsed: sourcesUsedForDetail(detail),
+        },
+        provider,
+        false,
+      );
+      storeAiChatAnswer(db, payload, questionHash, contentHash, PROMPT_VERSION);
+      return payload;
+    } catch (error) {
+      console.error(`[ai] ${provider} chat failed`, error);
     }
   }
 

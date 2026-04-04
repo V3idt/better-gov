@@ -14,8 +14,9 @@ import {
   verifySignInCode,
   VotingDatabaseError,
 } from "./db.ts";
-import { getPolicyExplanation } from "./ai.ts";
+import { getPolicyChatAnswer, getPolicyExplanation } from "./ai.ts";
 import type {
+  PropositionAiChatRequest,
   PropositionAiExplanationRequest,
   CreatePropositionInput,
   RequestSignInCodeInput,
@@ -191,6 +192,39 @@ const server = Bun.serve({
             propositionId: decodeURIComponent(propositionExplainMatch[1]),
             role: body.role,
             providerPreference: body.provider,
+          }),
+        );
+      }
+
+      const propositionChatMatch = url.pathname.match(/^\/api\/propositions\/([^/]+)\/chat$/);
+      if (propositionChatMatch && request.method === "POST") {
+        const body = await parseJson<PropositionAiChatRequest>(request);
+        if (body.role !== "student" && body.role !== "staff") {
+          throw new VotingDatabaseError("invalid_request", "Choose a valid audience role.");
+        }
+
+        if (typeof body.question !== "string" || !body.question.trim()) {
+          throw new VotingDatabaseError("invalid_request", "Ask a question to continue.");
+        }
+
+        if (
+          body.provider !== undefined &&
+          body.provider !== "auto" &&
+          body.provider !== "openai" &&
+          body.provider !== "gemini" &&
+          body.provider !== "grok"
+        ) {
+          throw new VotingDatabaseError("invalid_request", "Choose a valid AI provider.");
+        }
+
+        return json(
+          await getPolicyChatAnswer({
+            db,
+            sessionId: readSessionCookie(request),
+            propositionId: decodeURIComponent(propositionChatMatch[1]),
+            role: body.role,
+            providerPreference: body.provider,
+            question: body.question,
           }),
         );
       }

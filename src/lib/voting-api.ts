@@ -3,6 +3,8 @@ import type {
   CreatePropositionResponse,
   PropositionDetailResponse,
   PropositionAiExplanationRequest,
+  PropositionAiChatRequest,
+  PropositionAiChatResponse,
   PropositionAiExplanationResponse,
   PropositionHistoryResponse,
   PropositionListResponse,
@@ -86,6 +88,19 @@ export const getPropositionAiExplanation = (
     method: "POST",
     body: JSON.stringify({
       role: input.role,
+      ...(input.provider ? { provider: input.provider } : {}),
+      }),
+  });
+
+export const getPropositionAiChatAnswer = (
+  propositionId: string,
+  input: PropositionAiChatRequest,
+) =>
+  request<PropositionAiChatResponse>(`/propositions/${encodeURIComponent(propositionId)}/chat`, {
+    method: "POST",
+    body: JSON.stringify({
+      role: input.role,
+      question: input.question,
       ...(input.provider ? { provider: input.provider } : {}),
     }),
   });

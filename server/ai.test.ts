@@ -8,7 +8,7 @@ import {
   verifySignInCode,
   VotingDatabaseError,
 } from "./db.ts";
-import { getPolicyExplanation } from "./ai.ts";
+import { getPolicyChatAnswer, getPolicyExplanation } from "./ai.ts";
 
 let dbPath = "";
 let db: ReturnType<typeof openVotingDatabase>;
@@ -167,6 +167,62 @@ describe("policy AI explainer", () => {
     expect(fetchCount).toBe(1);
   });
 
+  it("reuses the cached chat answer for the same policy, role, provider, and question", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("hana.tadesse"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("hana.tadesse"), codeDelivery.devCode ?? "");
+
+    process.env.BETTER_GOV_GEMINI_API_KEY = "gemini-test-key";
+
+    let fetchCount = 0;
+    const fetchImpl = async () => {
+      fetchCount += 1;
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      answer: "Gemini chat answer",
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+
+    const first = await getPolicyChatAnswer({
+      db,
+      sessionId: verified.session.id,
+      propositionId: "campus:transparent-department-budgets",
+      role: "staff",
+      providerPreference: "gemini",
+      question: "What happens to student services?",
+      fetchImpl,
+    });
+
+    const second = await getPolicyChatAnswer({
+      db,
+      sessionId: verified.session.id,
+      propositionId: "campus:transparent-department-budgets",
+      role: "staff",
+      providerPreference: "gemini",
+      question: "What happens to student services?",
+      fetchImpl,
+    });
+
+    expect(first.cached).toBe(false);
+    expect(second.cached).toBe(true);
+    expect(second.providerUsed).toBe("gemini");
+    expect(second.answer).toBe("Gemini chat answer");
+    expect(fetchCount).toBe(1);
+  });
+
   it("fails when no provider is configured", async () => {
     const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("hana.tadesse"));
     const verified = verifySignInCode(db, emailAtConfiguredDomain("hana.tadesse"), codeDelivery.devCode ?? "");
@@ -178,6 +234,22 @@ describe("policy AI explainer", () => {
         propositionId: "campus:transparent-department-budgets",
         role: "staff",
         providerPreference: "auto",
+      }),
+    ).rejects.toThrow(VotingDatabaseError);
+  });
+
+  it("fails chat requests when no provider is configured", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("rahel.bekele"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("rahel.bekele"), codeDelivery.devCode ?? "");
+
+    await expect(
+      getPolicyChatAnswer({
+        db,
+        sessionId: verified.session.id,
+        propositionId: "campus:transparent-department-budgets",
+        role: "student",
+        providerPreference: "auto",
+        question: "What does this mean?",
       }),
     ).rejects.toThrow(VotingDatabaseError);
   });
