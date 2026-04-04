@@ -11,6 +11,7 @@ import type {
   PropositionHistoryResponse,
   PropositionListMode,
   PropositionListResponse,
+  PropositionVoteHistoryResponse,
   RequestSignInCodeInput,
   RequestSignInCodeResponse,
   SessionResponse,
@@ -27,6 +28,8 @@ export const sessionQueryKey = ["session"] as const;
 export const propositionListQueryKey = ["propositions"] as const;
 export const propositionListModeQueryKey = (mode: PropositionListMode) => ["propositions", mode] as const;
 export const propositionHistoryQueryKey = ["propositions", "history"] as const;
+export const propositionVoteHistoryQueryKey = (propositionId: string) =>
+  ["proposition", propositionId, "vote-history"] as const;
 export const propositionAiQueryKey = (propositionId: string, role: string, provider: string) =>
   ["proposition", propositionId, "ai", role, provider] as const;
 
@@ -84,6 +87,11 @@ export const createProposition = (input: CreatePropositionInput) =>
 
 export const getPropositionByPath = (path: string) =>
   request<PropositionDetailResponse>(`/propositions/by-path?path=${encodeURIComponent(path)}`, { method: "GET" });
+
+export const getPropositionVoteHistory = (propositionId: string) =>
+  request<PropositionVoteHistoryResponse>(`/propositions/${encodeURIComponent(propositionId)}/vote-history`, {
+    method: "GET",
+  });
 
 export const getPropositionAiExplanation = (
   propositionId: string,

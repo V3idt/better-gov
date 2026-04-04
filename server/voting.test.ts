@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import {
   createProposition,
   getPropositionDetail,
+  getPropositionVoteHistory,
   getSession,
   listPropositionHistory,
   listPropositions,
@@ -95,6 +96,23 @@ describe("voting database", () => {
     expect(detail.proposition.turnoutCount).toBe(beforeVote.proposition.turnoutCount + 1);
     expect(detail.proposition.voteBreakdown[0]?.count).toBe((beforeVote.proposition.voteBreakdown[0]?.count ?? 0) + 1);
     expect(detail.proposition.myVote?.choice).toBe("approve");
+  });
+
+  it("returns proposition vote history and appends a live point when a vote changes", async () => {
+    const propositionId = "campus:transparent-department-budgets";
+    const beforeHistory = getPropositionVoteHistory(db, propositionId);
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("leila.mekonnen"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("leila.mekonnen"), codeDelivery.devCode ?? "");
+
+    submitVote(db, verified.session.id, propositionId, "reject");
+    const afterHistory = getPropositionVoteHistory(db, propositionId);
+    const lastPoint = afterHistory.points.at(-1);
+    const previousPoint = beforeHistory.points.at(-1);
+
+    expect(beforeHistory.points.length).toBeGreaterThan(1);
+    expect(afterHistory.points.length).toBeGreaterThan(beforeHistory.points.length);
+    expect(lastPoint?.turnoutCount).toBe((previousPoint?.turnoutCount ?? 0) + 1);
+    expect(lastPoint?.rejectCount).toBe((previousPoint?.rejectCount ?? 0) + 1);
   });
 
   it("creates an open proposition for an authenticated campus account", async () => {

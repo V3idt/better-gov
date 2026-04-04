@@ -23,6 +23,8 @@ import type {
   PropositionStatus,
   PropositionSummary,
   PropositionListResponse,
+  PropositionVoteHistoryPoint,
+  PropositionVoteHistoryResponse,
   RequestSignInCodeResponse,
   SessionResponse,
   SessionRecord,
@@ -140,6 +142,16 @@ type VoteRow = {
   choice: VoteChoice;
   created_at: string;
   updated_at: string;
+};
+
+type VoteHistoryRow = {
+  id: number;
+  policy_id: string;
+  captured_at: string;
+  approve_count: number;
+  reject_count: number;
+  abstain_count: number;
+  source: "seed" | "live";
 };
 
 type RosterMemberRow = {
@@ -561,6 +573,23 @@ const propositionVoteTotalsSql = `
     updated_at = excluded.updated_at
 `;
 
+const propositionVoteHistorySql = `
+  INSERT INTO proposition_vote_history (
+    policy_id,
+    captured_at,
+    approve_count,
+    reject_count,
+    abstain_count,
+    source
+  )
+  VALUES (?, ?, ?, ?, ?, ?)
+  ON CONFLICT(policy_id, captured_at) DO UPDATE SET
+    approve_count = excluded.approve_count,
+    reject_count = excluded.reject_count,
+    abstain_count = excluded.abstain_count,
+    source = excluded.source
+`;
+
 const loadPerson = (db: Database, personId: string) => {
   const row = db
     .prepare(
@@ -873,6 +902,50 @@ const loadVoteCounts = (db: Database, propositionId: string): VoteCounts => {
   }
 
   return counts;
+};
+
+const recordVoteHistoryPoint = (
+  db: Database,
+  propositionId: string,
+  counts: Pick<VoteCounts, "approve" | "reject" | "abstain">,
+  capturedAt: string,
+  source: "seed" | "live",
+) => {
+  db.prepare(propositionVoteHistorySql).run(
+    propositionId,
+    capturedAt,
+    counts.approve,
+    counts.reject,
+    counts.abstain,
+    source,
+  );
+};
+
+const loadVoteHistoryRows = (db: Database, propositionId: string) =>
+  db
+    .prepare(
+      `
+        SELECT id, policy_id, captured_at, approve_count, reject_count, abstain_count, source
+        FROM proposition_vote_history
+        WHERE policy_id = ?
+        ORDER BY captured_at ASC, id ASC
+      `,
+    )
+    .all(propositionId) as VoteHistoryRow[];
+
+const toVoteHistoryPoint = (row: VoteHistoryRow): PropositionVoteHistoryPoint => {
+  const turnoutCount = row.approve_count + row.reject_count + row.abstain_count;
+
+  return {
+    capturedAt: row.captured_at,
+    approveCount: row.approve_count,
+    rejectCount: row.reject_count,
+    abstainCount: row.abstain_count,
+    turnoutCount,
+    approveShare: turnoutCount ? (row.approve_count / turnoutCount) * 100 : 0,
+    rejectShare: turnoutCount ? (row.reject_count / turnoutCount) * 100 : 0,
+    abstainShare: turnoutCount ? (row.abstain_count / turnoutCount) * 100 : 0,
+  };
 };
 
 const loadPropositionBullets = (db: Database, propositionId: string) =>
@@ -1312,6 +1385,21 @@ const seedPropositions = (db: Database) => {
       seededVotes.abstain,
       timestamp,
     );
+
+    db.prepare(`DELETE FROM proposition_vote_history WHERE policy_id = ? AND source = 'seed'`).run(proposition.id);
+    for (const point of proposition.voteHistory ?? []) {
+      recordVoteHistoryPoint(
+        db,
+        proposition.id,
+        {
+          approve: point.approve,
+          reject: point.reject,
+          abstain: point.abstain,
+        },
+        point.capturedAt,
+        "seed",
+      );
+    }
   }
 };
 
@@ -1650,6 +1738,18 @@ export const listPropositionHistory = (db: Database): PropositionHistoryResponse
   return { propositions };
 };
 
+export const getPropositionVoteHistory = (db: Database, propositionId: string): PropositionVoteHistoryResponse => {
+  const proposition = loadPropositionById(db, propositionId);
+  if (!proposition) {
+    throw new VotingDatabaseError("proposition_not_found", "Proposition not found.");
+  }
+
+  return {
+    propositionId,
+    points: loadVoteHistoryRows(db, propositionId).map(toVoteHistoryPoint),
+  };
+};
+
 export const getPropositionDetail = (
   db: Database,
   sessionId: string | null,
@@ -1848,6 +1948,17 @@ export const createProposition = (
 
     db.prepare(propositionAuthorshipSql).run(propositionId, session.person.id, timestamp);
     db.prepare(propositionSubmissionLogSql).run(session.person.id, ipHash, timestamp);
+    recordVoteHistoryPoint(
+      db,
+      propositionId,
+      {
+        approve: 0,
+        reject: 0,
+        abstain: 0,
+      },
+      timestamp,
+      "live",
+    );
 
     return getPropositionDetailById(db, sessionId, propositionId);
   })();
@@ -1923,7 +2034,26 @@ export const submitVote = (
     const existingVote = loadVote(db, propositionId, session.person.id);
     const timestamp = now();
 
+    if (existingVote?.choice === choice) {
+      return {
+        action: "updated",
+        vote: existingVote,
+      };
+    }
+
     db.prepare(voteSql).run(propositionId, session.person.id, choice, existingVote?.createdAt ?? timestamp, timestamp);
+    const counts = loadVoteCounts(db, propositionId);
+    recordVoteHistoryPoint(
+      db,
+      propositionId,
+      {
+        approve: counts.approve,
+        reject: counts.reject,
+        abstain: counts.abstain,
+      },
+      timestamp,
+      "live",
+    );
 
     return {
       action: existingVote ? "updated" : "created",

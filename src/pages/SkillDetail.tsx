@@ -1,7 +1,7 @@
 import Navbar from "@/components/Navbar";
 import { Link, useParams } from "react-router-dom";
 import { ChevronDown, Copy, FileText, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import AccountDialog from "@/components/AccountDialog";
 import { Button } from "@/components/ui/button";
@@ -44,13 +44,17 @@ import {
   getPropositionAiExplanation,
   getPropositionAiChatAnswer,
   getPropositionByPath,
+  getPropositionVoteHistory,
   getSession,
   propositionHistoryQueryKey,
   propositionAiQueryKey,
   propositionListQueryKey,
+  propositionVoteHistoryQueryKey,
   sessionQueryKey,
   submitVote,
 } from "@/lib/voting-api";
+
+const PropositionTrendChart = lazy(() => import("@/components/PropositionTrendChart"));
 
 const statusColor = (s: PropositionReviewCheck["status"]) => {
   if (s === "PASS") return "text-green-500 bg-green-500/10";
@@ -177,6 +181,17 @@ const SkillDetail = () => {
   });
 
   const proposition = propositionQuery.data?.proposition;
+  const voteHistoryQuery = useQuery({
+    queryKey: proposition ? propositionVoteHistoryQueryKey(proposition.id) : ["proposition", "vote-history", "loading"],
+    queryFn: () => {
+      if (!proposition) {
+        throw new Error("Proposition not loaded.");
+      }
+
+      return getPropositionVoteHistory(proposition.id);
+    },
+    enabled: Boolean(proposition),
+  });
   const isVotable =
     proposition?.status === "open" || proposition?.status === "closing_soon";
   const isAuthenticated = sessionQuery.data?.authenticated === true;
@@ -241,6 +256,9 @@ const SkillDetail = () => {
       await queryClient.invalidateQueries({ queryKey: ["proposition", propositionPath] });
       await queryClient.invalidateQueries({ queryKey: propositionListQueryKey });
       await queryClient.invalidateQueries({ queryKey: propositionHistoryQueryKey });
+      if (proposition) {
+        await queryClient.invalidateQueries({ queryKey: propositionVoteHistoryQueryKey(proposition.id) });
+      }
     },
   });
 
@@ -477,6 +495,26 @@ const SkillDetail = () => {
                     </div>
                   )}
                 </div>
+
+                {voteHistoryQuery.data?.points?.length ? (
+                  <div className="mb-6">
+                    <Suspense
+                      fallback={
+                        <div className="rounded-lg border border-border bg-secondary/20 p-5">
+                          <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Vote Trend</h3>
+                          <div className="h-[220px] animate-pulse rounded border border-border/60 bg-background/40" />
+                        </div>
+                      }
+                    >
+                      <PropositionTrendChart points={voteHistoryQuery.data.points} />
+                    </Suspense>
+                  </div>
+                ) : voteHistoryQuery.isLoading ? (
+                  <div className="mb-6 rounded-lg border border-border bg-secondary/20 p-5">
+                    <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Vote Trend</h3>
+                    <div className="h-[220px] animate-pulse rounded border border-border/60 bg-background/40" />
+                  </div>
+                ) : null}
 
                 <div className="mb-6 rounded-lg border border-border p-5">
                   <h3 className="mb-3 text-xs uppercase tracking-wider text-muted-foreground">tl;dr</h3>

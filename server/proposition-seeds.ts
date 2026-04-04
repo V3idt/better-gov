@@ -24,6 +24,12 @@ export type SeedProposition = {
     reject: number;
     abstain: number;
   };
+  voteHistory?: Array<{
+    capturedAt: string;
+    approve: number;
+    reject: number;
+    abstain: number;
+  }>;
 };
 
 const parseCompactCount = (value: string) => {
@@ -63,28 +69,146 @@ const deriveSeedVotesFromBallotItem = (item: (typeof ballotItems)[number]) => {
   };
 };
 
-const openPropositions: SeedProposition[] = ballotItems.map((item) => ({
-  id: propositionIdFromParts(item.jurisdictionSlug, item.slug),
-  slug: item.slug,
-  jurisdictionSlug: item.jurisdictionSlug,
-  jurisdiction: item.jurisdiction,
-  category: item.category,
-  title: item.title,
-  status: item.status === "Draft" ? "draft" : "open",
-  closesAt: new Date(item.closesOn).toISOString(),
-  postedAt: new Date(item.postedOn).toISOString(),
-  sponsor: item.sponsor,
-  scope: item.scope,
-  tldr: item.tldr,
-  bullets: item.bullets,
-  reviewChecks: item.reviewChecks,
-  brief: item.brief,
-  displayOrder: item.rank,
-  path: propositionPathFromParts(item.jurisdictionSlug, item.slug),
-  seedVotes: deriveSeedVotesFromBallotItem(item),
-}));
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-const closedPropositions: SeedProposition[] = [
+const hashText = (value: string) => {
+  let hash = 0;
+
+  for (const char of value) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+
+  return hash;
+};
+
+const distributeAcrossBuckets = (total: number, weights: number[]) => {
+  if (total <= 0) {
+    return weights.map(() => 0);
+  }
+
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+  const exact = weights.map((weight) => (total * weight) / weightTotal);
+  const bucketed = exact.map((value) => Math.floor(value));
+  let remainder = total - bucketed.reduce((sum, value) => sum + value, 0);
+
+  const rankedRemainders = exact
+    .map((value, index) => ({ index, remainder: value - Math.floor(value) }))
+    .sort((left, right) => right.remainder - left.remainder);
+
+  for (let index = 0; index < rankedRemainders.length && remainder > 0; index += 1) {
+    bucketed[rankedRemainders[index].index] += 1;
+    remainder -= 1;
+  }
+
+  return bucketed;
+};
+
+const buildBucketWeights = (seed: number, bucketCount: number, drift: number, wobble: number) =>
+  Array.from({ length: bucketCount }, (_, index) => {
+    const position = (index + 1) / bucketCount;
+    const wave = Math.sin((seed % 11) * 0.37 + (index + 1) * 1.19);
+    const noise = ((seed >> ((index % 4) * 4)) & 0xf) / 30;
+
+    return clamp(1 + drift * (position - 0.5) * 1.8 + wave * wobble + noise, 0.14, 2.6);
+  });
+
+const buildSeedVoteHistory = (proposition: Omit<SeedProposition, "voteHistory">) => {
+  const finalVotes = proposition.seedVotes ?? { approve: 0, reject: 0, abstain: 0 };
+  const bucketCount = proposition.status === "closed" ? 8 : 7;
+  const seed = hashText(proposition.id);
+  const startMs = Date.parse(proposition.postedAt);
+  const endMs = Date.parse(proposition.status === "closed" ? proposition.closesAt : "2026-04-04T08:00:00.000Z");
+
+  if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) {
+    return [
+      {
+        capturedAt: proposition.postedAt,
+        approve: 0,
+        reject: 0,
+        abstain: 0,
+      },
+      {
+        capturedAt: proposition.status === "closed" ? proposition.closesAt : "2026-04-04T08:00:00.000Z",
+        approve: finalVotes.approve,
+        reject: finalVotes.reject,
+        abstain: finalVotes.abstain,
+      },
+    ];
+  }
+
+  const approveWeights = buildBucketWeights(seed + 7, bucketCount, ((seed % 7) - 3) * 0.12, 0.16);
+  const rejectWeights = buildBucketWeights(seed + 19, bucketCount, (((seed >> 3) % 7) - 3) * 0.14, 0.14);
+  const abstainWeights = buildBucketWeights(seed + 29, bucketCount, (((seed >> 6) % 5) - 2) * 0.08, 0.1);
+  const approveBuckets = distributeAcrossBuckets(finalVotes.approve, approveWeights);
+  const rejectBuckets = distributeAcrossBuckets(finalVotes.reject, rejectWeights);
+  const abstainBuckets = distributeAcrossBuckets(finalVotes.abstain, abstainWeights);
+
+  let approve = 0;
+  let reject = 0;
+  let abstain = 0;
+
+  const points = [
+    {
+      capturedAt: proposition.postedAt,
+      approve,
+      reject,
+      abstain,
+    },
+  ];
+
+  for (let index = 0; index < bucketCount; index += 1) {
+    approve += approveBuckets[index];
+    reject += rejectBuckets[index];
+    abstain += abstainBuckets[index];
+
+    const timestamp = new Date(startMs + ((endMs - startMs) * (index + 1)) / bucketCount).toISOString();
+    points.push({
+      capturedAt: timestamp,
+      approve,
+      reject,
+      abstain,
+    });
+  }
+
+  points[points.length - 1] = {
+    capturedAt: proposition.status === "closed" ? proposition.closesAt : "2026-04-04T08:00:00.000Z",
+    approve: finalVotes.approve,
+    reject: finalVotes.reject,
+    abstain: finalVotes.abstain,
+  };
+
+  return points;
+};
+
+const openPropositions: SeedProposition[] = ballotItems.map((item) => {
+  const proposition = {
+    id: propositionIdFromParts(item.jurisdictionSlug, item.slug),
+    slug: item.slug,
+    jurisdictionSlug: item.jurisdictionSlug,
+    jurisdiction: item.jurisdiction,
+    category: item.category,
+    title: item.title,
+    status: item.status === "Draft" ? "draft" : "open",
+    closesAt: new Date(item.closesOn).toISOString(),
+    postedAt: new Date(item.postedOn).toISOString(),
+    sponsor: item.sponsor,
+    scope: item.scope,
+    tldr: item.tldr,
+    bullets: item.bullets,
+    reviewChecks: item.reviewChecks,
+    brief: item.brief,
+    displayOrder: item.rank,
+    path: propositionPathFromParts(item.jurisdictionSlug, item.slug),
+    seedVotes: deriveSeedVotesFromBallotItem(item),
+  } satisfies Omit<SeedProposition, "voteHistory">;
+
+  return {
+    ...proposition,
+    voteHistory: buildSeedVoteHistory(proposition),
+  };
+});
+
+const closedPropositionsBase: Array<Omit<SeedProposition, "voteHistory">> = [
   {
     id: propositionIdFromParts("academic-calendar", "spring-reading-week"),
     slug: "spring-reading-week",
@@ -312,5 +436,10 @@ Housing staff would have needed a uniform enforcement workflow and appeal proces
     },
   },
 ];
+
+const closedPropositions: SeedProposition[] = closedPropositionsBase.map((proposition) => ({
+  ...proposition,
+  voteHistory: buildSeedVoteHistory(proposition),
+}));
 
 export const propositionSeeds = [...openPropositions, ...closedPropositions];

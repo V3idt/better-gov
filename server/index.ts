@@ -3,6 +3,7 @@ import {
   buildSessionCookie,
   createProposition,
   getPropositionDetail,
+  getPropositionVoteHistory,
   getSession,
   listPropositionHistory,
   listPropositions,
@@ -173,6 +174,11 @@ const server = Bun.serve({
         }
 
         return json(getPropositionDetail(db, readSessionCookie(request), propositionPath));
+      }
+
+      const propositionHistorySeriesMatch = url.pathname.match(/^\/api\/propositions\/([^/]+)\/vote-history$/);
+      if (propositionHistorySeriesMatch && request.method === "GET") {
+        return json(getPropositionVoteHistory(db, decodeURIComponent(propositionHistorySeriesMatch[1])));
       }
 
       const propositionExplainMatch = url.pathname.match(/^\/api\/propositions\/([^/]+)\/explanation$/);

@@ -80,6 +80,17 @@ CREATE TABLE IF NOT EXISTS proposition_vote_totals (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS proposition_vote_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  policy_id TEXT NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+  captured_at TEXT NOT NULL,
+  approve_count INTEGER NOT NULL DEFAULT 0,
+  reject_count INTEGER NOT NULL DEFAULT 0,
+  abstain_count INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL CHECK (source IN ('seed', 'live')),
+  UNIQUE(policy_id, captured_at)
+);
+
 CREATE TABLE IF NOT EXISTS votes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   policy_id TEXT NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
@@ -165,6 +176,7 @@ CREATE INDEX IF NOT EXISTS idx_proposition_authorship_person_id ON proposition_a
 CREATE INDEX IF NOT EXISTS idx_proposition_submission_log_person_created ON proposition_submission_log(person_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_proposition_submission_log_ip_created ON proposition_submission_log(ip_hash, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_proposition_vote_totals_updated_at ON proposition_vote_totals(updated_at);
+CREATE INDEX IF NOT EXISTS idx_proposition_vote_history_policy_captured ON proposition_vote_history(policy_id, captured_at ASC);
 CREATE INDEX IF NOT EXISTS idx_roster_members_email ON roster_members(university_email);
 CREATE INDEX IF NOT EXISTS idx_email_codes_email_created ON email_verification_codes(university_email, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_explanations_policy_role_provider ON ai_explanations(policy_id, audience_role, requested_provider);

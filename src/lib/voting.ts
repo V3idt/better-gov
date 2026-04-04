@@ -37,6 +37,17 @@ export type PropositionBreakdownItem = {
   count: number;
 };
 
+export type PropositionVoteHistoryPoint = {
+  capturedAt: string;
+  approveCount: number;
+  rejectCount: number;
+  abstainCount: number;
+  turnoutCount: number;
+  approveShare: number;
+  rejectShare: number;
+  abstainShare: number;
+};
+
 export type PropositionReviewCheck = {
   name: string;
   status: ReviewStatus;
@@ -110,6 +121,11 @@ export type PropositionHistoryResponse = {
 
 export type PropositionDetailResponse = {
   proposition: PropositionDetail;
+};
+
+export type PropositionVoteHistoryResponse = {
+  propositionId: string;
+  points: PropositionVoteHistoryPoint[];
 };
 
 export type CreatePropositionInput = {
