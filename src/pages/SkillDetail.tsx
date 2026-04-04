@@ -1,7 +1,7 @@
 import Navbar from "@/components/Navbar";
 import { Link, useParams } from "react-router-dom";
 import { Copy, FileText } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import AccountDialog from "@/components/AccountDialog";
 import { Button } from "@/components/ui/button";
@@ -75,6 +75,29 @@ const splitPillClass = (label: string) => {
   return "text-amber-500 bg-amber-500/10";
 };
 
+const formatTimeLeft = (closesAt: string, currentTime: number) => {
+  const diff = Date.parse(closesAt) - currentTime;
+  if (Number.isNaN(diff) || diff <= 0) {
+    return "Closed";
+  }
+
+  const totalSeconds = Math.floor(diff / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (days > 0) {
+    return `${days}d ${hours}h ${minutes}m`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+
+  return `${minutes}m ${seconds}s`;
+};
+
 const SkillDetail = () => {
   const queryClient = useQueryClient();
   const { "*": rawPath } = useParams();
@@ -88,6 +111,15 @@ const SkillDetail = () => {
   const [copied, setCopied] = useState(false);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [pendingVote, setPendingVote] = useState<VoteChoice | null>(null);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   const sessionQuery = useQuery({
     queryKey: sessionQueryKey,
@@ -132,6 +164,7 @@ const SkillDetail = () => {
   const pendingVoteLabel = pendingVote ? pendingVote.charAt(0).toUpperCase() + pendingVote.slice(1) : "";
   const isAuthenticated = sessionQuery.data?.authenticated === true;
   const activePerson = sessionQuery.data?.authenticated ? sessionQuery.data.person : null;
+  const closesIn = proposition ? formatTimeLeft(proposition.closesAt, currentTime) : "";
 
   const errorMessage =
     submitMutation.error instanceof VotingApiError
@@ -328,8 +361,8 @@ const SkillDetail = () => {
                 </div>
 
                 <div>
-                  <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Closes On</h3>
-                  <span className="text-sm font-mono text-foreground">{new Date(proposition.closesAt).toLocaleDateString()}</span>
+                  <h3 className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Time Left</h3>
+                  <span className="text-sm font-mono text-foreground">{closesIn}</span>
                 </div>
 
                 <div>
