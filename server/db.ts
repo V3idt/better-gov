@@ -760,6 +760,12 @@ const seedRoster = (db: Database) => {
   const timestamp = "2026-04-04T08:00:00.000Z";
 
   for (const member of ROSTER_MEMBERS) {
+    const existingRosterMember = loadRosterMemberByPersonId(db, member.personId);
+    if (existingRosterMember && existingRosterMember.university_email !== member.universityEmail) {
+      db.prepare(`DELETE FROM email_verification_codes WHERE university_email = ?`).run(existingRosterMember.university_email);
+      db.prepare(`DELETE FROM roster_members WHERE person_id = ?`).run(member.personId);
+    }
+
     db.prepare(personSql).run(member.personId, member.displayName, member.role, timestamp, timestamp);
     db.prepare(rosterMemberSql).run(
       member.personId,
