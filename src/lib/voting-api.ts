@@ -50,7 +50,7 @@ const request = async <T>(path: string, init?: RequestInit) => {
     throw new VotingApiError(
       503,
       "api_unavailable",
-      "The account service is not running. Start the app with `npm run dev`, or run `npm run dev:api` alongside the web server.",
+      "The service is temporarily unavailable. Please try again.",
     );
   }
 
