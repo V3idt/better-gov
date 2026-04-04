@@ -7,6 +7,7 @@ import {
   getAutomaticAiPolicyBuilderStatus,
   getPropositionDetail,
   getPropositionVoteHistory,
+  getSecurityStatus,
   getSession,
   listPropositionHistory,
   listPropositions,
@@ -199,6 +200,31 @@ describe("voting database", () => {
     expect(defaultList.propositions[0]?.id).not.toBe(personalizedList.propositions[0]?.id);
     expect(personalizedList.propositions[0]?.id).toBe("academic-senate:lecture-recording-default");
     expect(personalizedList.propositions[0]?.personalizationReason).toBeTruthy();
+  });
+
+  it("expires stale sessions after the inactivity window", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("rahel.bekele"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("rahel.bekele"), codeDelivery.devCode ?? "");
+    const expiredAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+
+    db.prepare(`UPDATE sessions SET updated_at = ? WHERE id = ?`).run(expiredAt, verified.session.id);
+
+    const session = getSession(db, verified.session.id);
+
+    expect(session.authenticated).toBe(false);
+  });
+
+  it("reports live security controls and audit activity from the backend", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("leila.mekonnen"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("leila.mekonnen"), codeDelivery.devCode ?? "");
+
+    submitVote(db, verified.session.id, "campus:transparent-department-budgets", "approve");
+    const security = getSecurityStatus(db);
+
+    expect(security.controls.some((control) => control.key === "vote_integrity" && control.status === "active")).toBe(true);
+    expect(security.controls.some((control) => control.key === "audit_trail" && control.status === "active")).toBe(true);
+    expect(security.metrics.auditEventsLast24Hours).toBeGreaterThan(0);
+    expect(security.metrics.votesRecorded).toBeGreaterThan(0);
   });
 
   it("automatically publishes two AI policies when slots are available", async () => {

@@ -3,6 +3,7 @@ import {
   buildSessionCookie,
   createProposition,
   getPropositionDetail,
+  getSecurityStatus,
   getPropositionVoteHistory,
   getSession,
   listPropositionHistory,
@@ -102,12 +103,14 @@ const errorResponse = (error: unknown, headers: HeadersInit = {}) => {
     );
   }
 
-  const message = error instanceof Error ? error.message : "Unknown error";
+  if (!(error instanceof VotingDatabaseError)) {
+    console.error("[api] unhandled error", error);
+  }
   return json(
     {
       error: {
         code: "internal_error",
-        message,
+        message: "Internal server error.",
       },
     },
     500,
@@ -171,6 +174,10 @@ const server = Bun.serve({
 
       if (request.method === "GET" && url.pathname === "/api/ai/policy-builder-status") {
         return json(await reconcileAutomaticAiPolicies({ db }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/security/status") {
+        return json(getSecurityStatus(db));
       }
 
       if (request.method === "GET" && url.pathname === "/api/propositions/by-path") {
@@ -297,7 +304,7 @@ const server = Bun.serve({
           throw new VotingDatabaseError("invalid_email", "Enter your university email.");
         }
 
-        return json(await requestSignInCode(db, body.email));
+        return json(await requestSignInCode(db, body.email, readClientAddress(request)));
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/verify-code") {

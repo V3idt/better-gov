@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { EmailDeliveryError, isDevelopmentAuthEnabled, sendSignInCodeEmail } from "./email.ts";
+import { EmailDeliveryError, getEmailDeliveryMode, isDevelopmentAuthEnabled, sendSignInCodeEmail } from "./email.ts";
 import { propositionSeeds } from "./proposition-seeds.ts";
 import type {
   AiAudienceRole,
@@ -29,6 +29,7 @@ import type {
   PropositionVoteHistoryPoint,
   PropositionVoteHistoryResponse,
   RequestSignInCodeResponse,
+  SecurityStatusResponse,
   SessionResponse,
   SessionRecord,
   SignOutResponse,
@@ -50,8 +51,13 @@ const OTP_LENGTH = 6;
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const OTP_MAX_FAILED_ATTEMPTS = 5;
+const AUTH_REQUEST_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_REQUEST_LIMIT_PER_EMAIL = 5;
+const AUTH_REQUEST_LIMIT_PER_IP = 20;
 const OTP_PEPPER = process.env.BETTER_GOV_OTP_PEPPER ?? "better-gov-local-dev-pepper";
 const ALLOWED_EMAIL_DOMAIN = (process.env.BETTER_GOV_ALLOWED_EMAIL_DOMAIN ?? "university.edu").toLowerCase();
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_TOUCH_INTERVAL_MS = 15 * 60 * 1000;
 const CLOSING_SOON_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const PROPOSITION_MIN_CLOSE_OFFSET_MS = 60 * 60 * 1000;
 const PROPOSITION_MAX_CLOSE_OFFSET_MS = 180 * 24 * 60 * 60 * 1000;
@@ -66,6 +72,7 @@ const PROPOSITION_SUBMISSION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PROPOSITION_SUBMISSION_LIMIT_PER_PERSON = 3;
 const PROPOSITION_SUBMISSION_LIMIT_PER_IP = 10;
 const RATE_LIMIT_PEPPER = process.env.BETTER_GOV_RATE_LIMIT_PEPPER ?? OTP_PEPPER;
+const COOKIE_SECURE = process.env.NODE_ENV === "production" || process.env.BETTER_GOV_COOKIE_SECURE === "1";
 const rosterEmail = (localPart: string) => `${localPart}@${ALLOWED_EMAIL_DOMAIN}`;
 
 const ROSTER_MEMBERS = [
@@ -183,6 +190,8 @@ type EmailCodeRow = {
   created_at: string;
   updated_at: string;
 };
+
+type SecurityControlStatus = SecurityStatusResponse["controls"][number]["status"];
 
 type AiExplanationRow = {
   id: number;
@@ -574,6 +583,16 @@ const propositionSubmissionLogSql = `
   VALUES (?, ?, ?)
 `;
 
+const authRequestLogSql = `
+  INSERT INTO auth_request_log (university_email, ip_hash, created_at)
+  VALUES (?, ?, ?)
+`;
+
+const auditLogSql = `
+  INSERT INTO audit_log_entries (actor_person_id, action, target_type, target_id, ip_hash, metadata_json, created_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`;
+
 const propositionVoteTotalsSql = `
   INSERT INTO proposition_vote_totals (policy_id, approve_count, reject_count, abstain_count, updated_at)
   VALUES (?, ?, ?, ?, ?)
@@ -627,6 +646,19 @@ const loadSession = (db: Database, sessionId: string) => {
     .get(sessionId) as SessionRow | undefined;
 
   return row ? toSession(row) : null;
+};
+
+const touchSession = (db: Database, sessionId: string, timestamp: string) => {
+  db.prepare(`UPDATE sessions SET updated_at = ? WHERE id = ?`).run(timestamp, sessionId);
+};
+
+const purgeExpiredSessions = (db: Database) => {
+  db.prepare(
+    `
+      DELETE FROM sessions
+      WHERE person_id != ? AND updated_at < ?
+    `,
+  ).run(AI_SYSTEM_PERSON_ID, new Date(Date.now() - SESSION_TTL_MS).toISOString());
 };
 
 const propositionSelect = `
@@ -1014,6 +1046,32 @@ const countRecentSubmissionsForIp = (db: Database, ipHash: string, sinceIso: str
       .get(ipHash, sinceIso) as CountRow
   ).total;
 
+const countRecentAuthRequestsForEmail = (db: Database, email: string, sinceIso: string) =>
+  (
+    db
+      .prepare(
+        `
+          SELECT COUNT(*) AS total
+          FROM auth_request_log
+          WHERE university_email = ? AND created_at >= ?
+        `,
+      )
+      .get(normalizeEmail(email), sinceIso) as CountRow
+  ).total;
+
+const countRecentAuthRequestsForIp = (db: Database, ipHash: string, sinceIso: string) =>
+  (
+    db
+      .prepare(
+        `
+          SELECT COUNT(*) AS total
+          FROM auth_request_log
+          WHERE ip_hash = ? AND created_at >= ?
+        `,
+      )
+      .get(ipHash, sinceIso) as CountRow
+  ).total;
+
 const loadRosterMemberByEmail = (db: Database, email: string) => {
   const row = db
     .prepare(
@@ -1056,6 +1114,81 @@ const loadLatestEmailCode = (db: Database, email: string) => {
     .get(normalizeEmail(email)) as EmailCodeRow | undefined;
 
   return row ?? null;
+};
+
+const countRecentAuditEvents = (db: Database, sinceIso: string) =>
+  (
+    db
+      .prepare(
+        `
+          SELECT COUNT(*) AS total
+          FROM audit_log_entries
+          WHERE created_at >= ?
+        `,
+      )
+      .get(sinceIso) as CountRow
+  ).total;
+
+const countRowsForTable = (db: Database, tableName: "votes" | "sessions") =>
+  (
+    db
+      .prepare(
+        `
+          SELECT COUNT(*) AS total
+          FROM ${tableName}
+          ${tableName === "sessions" ? "WHERE person_id != ?" : ""}
+        `,
+      )
+      .get(...(tableName === "sessions" ? [AI_SYSTEM_PERSON_ID] : [])) as CountRow
+  ).total;
+
+const countRosterMembersByStatus = (db: Database, status: "active" | "inactive") =>
+  (
+    db
+      .prepare(
+        `
+          SELECT COUNT(*) AS total
+          FROM roster_members
+          WHERE status = ?
+        `,
+      )
+      .get(status) as CountRow
+  ).total;
+
+const countPoliciesByStatus = (db: Database, status: "open" | "closed" | "draft") =>
+  (
+    db
+      .prepare(
+        `
+          SELECT COUNT(*) AS total
+          FROM policies
+          WHERE status = ?
+        `,
+      )
+      .get(status) as CountRow
+  ).total;
+
+const appendAuditLogEntry = (
+  db: Database,
+  entry: {
+    actorPersonId?: string | null;
+    action: string;
+    targetType: string;
+    targetId?: string | null;
+    ipHash?: string | null;
+    metadata?: Record<string, unknown>;
+    createdAt?: string;
+  },
+) => {
+  db.prepare(auditLogSql).run(
+    entry.actorPersonId ?? null,
+    entry.action,
+    entry.targetType,
+    entry.targetId ?? null,
+    entry.ipHash ?? null,
+    JSON.stringify(entry.metadata ?? {}),
+    entry.createdAt ?? now(),
+  );
 };
 
 const loadNextDisplayOrder = (db: Database) =>
@@ -1605,6 +1738,7 @@ const createSession = (db: Database, personId: string) => {
     updatedAt: timestamp,
   };
 
+  db.prepare(`DELETE FROM sessions WHERE person_id = ?`).run(personId);
   db.prepare(sessionSql).run(session.id, session.personId, session.createdAt, session.updatedAt);
   return session;
 };
@@ -1633,10 +1767,10 @@ export const closeVotingDatabase = (db: Database) => {
 };
 
 export const buildSessionCookie = (sessionId: string) =>
-  `${SESSION_COOKIE_NAME}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`;
+  `${SESSION_COOKIE_NAME}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${COOKIE_SECURE ? "; Secure" : ""}`;
 
 export const buildClearSessionCookie = () =>
-  `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${COOKIE_SECURE ? "; Secure" : ""}`;
 
 export const getResolvedSession = (db: Database, sessionId: string | null): SessionContext | null => {
   if (!sessionId) {
@@ -1648,10 +1782,44 @@ export const getResolvedSession = (db: Database, sessionId: string | null): Sess
     return null;
   }
 
+  const sessionAgeMs = Date.now() - Date.parse(session.updatedAt);
+  if (Number.isNaN(sessionAgeMs) || sessionAgeMs >= SESSION_TTL_MS) {
+    db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+    appendAuditLogEntry(db, {
+      actorPersonId: session.personId,
+      action: "session_expired",
+      targetType: "session",
+      targetId: session.id,
+      metadata: { reason: "idle_timeout" },
+    });
+    return null;
+  }
+
   const person = loadPerson(db, session.personId);
   if (!person) {
     db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
     return null;
+  }
+
+  if (person.id !== AI_SYSTEM_PERSON_ID) {
+    const rosterMember = loadRosterMemberByPersonId(db, person.id);
+    if (!rosterMember || rosterMember.status !== "active") {
+      db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
+      appendAuditLogEntry(db, {
+        actorPersonId: person.id,
+        action: "session_revoked",
+        targetType: "session",
+        targetId: session.id,
+        metadata: { reason: !rosterMember ? "roster_missing" : "roster_inactive" },
+      });
+      return null;
+    }
+  }
+
+  if (sessionAgeMs >= SESSION_TOUCH_INTERVAL_MS) {
+    const touchedAt = now();
+    touchSession(db, session.id, touchedAt);
+    session.updatedAt = touchedAt;
   }
 
   return {
@@ -1677,7 +1845,11 @@ export const getSession = (db: Database, sessionId: string | null): SessionRespo
   };
 };
 
-export const requestSignInCode = async (db: Database, email: string): Promise<RequestSignInCodeResponse> => {
+export const requestSignInCode = async (
+  db: Database,
+  email: string,
+  clientIpAddress: string | null = null,
+): Promise<RequestSignInCodeResponse> => {
   if (!hasText(email)) {
     throw new VotingDatabaseError("invalid_email", "Enter your university email.");
   }
@@ -1687,9 +1859,34 @@ export const requestSignInCode = async (db: Database, email: string): Promise<Re
     throw new VotingDatabaseError("invalid_email", `Use your @${ALLOWED_EMAIL_DOMAIN} account.`);
   }
 
+  const ipHash = clientIpAddress ? hashRateLimitValue(clientIpAddress) : null;
+  const authWindowStart = new Date(Date.now() - AUTH_REQUEST_WINDOW_MS).toISOString();
+  if (countRecentAuthRequestsForEmail(db, normalizedEmail, authWindowStart) >= AUTH_REQUEST_LIMIT_PER_EMAIL) {
+    throw new VotingDatabaseError("rate_limited", "Too many sign-in attempts for this email. Try again later.");
+  }
+
+  if (ipHash && countRecentAuthRequestsForIp(db, ipHash, authWindowStart) >= AUTH_REQUEST_LIMIT_PER_IP) {
+    throw new VotingDatabaseError("rate_limited", "Too many sign-in attempts from this connection. Try again later.");
+  }
+
   const resendAvailableAt = toFutureIso(OTP_RESEND_COOLDOWN_MS);
   const expiresAt = toFutureIso(OTP_TTL_MS);
   const rosterMember = loadRosterMemberByEmail(db, normalizedEmail) ?? ensureDevelopmentRosterMember(db, normalizedEmail);
+  const timestamp = now();
+
+  db.prepare(authRequestLogSql).run(normalizedEmail, ipHash, timestamp);
+  appendAuditLogEntry(db, {
+    actorPersonId: rosterMember?.person_id ?? null,
+    action: "auth_code_requested",
+    targetType: "auth",
+    ipHash,
+    metadata: {
+      email: maskEmail(normalizedEmail),
+      deliveryMode: getEmailDeliveryMode(),
+      rosterMatched: Boolean(rosterMember),
+    },
+    createdAt: timestamp,
+  });
 
   if (!rosterMember || rosterMember.status !== "active") {
     return {
@@ -1706,7 +1903,6 @@ export const requestSignInCode = async (db: Database, email: string): Promise<Re
   }
 
   const code = createOtpCode();
-  const timestamp = now();
   const codeId = randomId("otp");
 
   db.prepare(
@@ -1767,18 +1963,45 @@ export const verifySignInCode = (db: Database, email: string, code: string): Ver
       throw new VotingDatabaseError("invalid_code", "Enter the 6-digit code.");
     }
 
-  const rosterMember = loadRosterMemberByEmail(db, normalizedEmail) ?? ensureDevelopmentRosterMember(db, normalizedEmail);
+    const rosterMember = loadRosterMemberByEmail(db, normalizedEmail) ?? ensureDevelopmentRosterMember(db, normalizedEmail);
     const latestCode = loadLatestEmailCode(db, normalizedEmail);
 
     if (!rosterMember || rosterMember.status !== "active" || !latestCode || latestCode.consumed_at) {
+      appendAuditLogEntry(db, {
+        actorPersonId: rosterMember?.person_id ?? null,
+        action: "auth_sign_in_failed",
+        targetType: "auth",
+        metadata: {
+          email: maskEmail(normalizedEmail),
+          reason: "missing_or_inactive_account",
+        },
+      });
       throw new VotingDatabaseError("invalid_code", "That code could not be verified.");
     }
 
     if (Date.parse(latestCode.expires_at) <= Date.now()) {
+      appendAuditLogEntry(db, {
+        actorPersonId: rosterMember.person_id,
+        action: "auth_sign_in_failed",
+        targetType: "auth",
+        metadata: {
+          email: maskEmail(normalizedEmail),
+          reason: "code_expired",
+        },
+      });
       throw new VotingDatabaseError("code_expired", "That code expired. Request a new one.");
     }
 
     if (latestCode.failed_attempts >= OTP_MAX_FAILED_ATTEMPTS) {
+      appendAuditLogEntry(db, {
+        actorPersonId: rosterMember.person_id,
+        action: "auth_sign_in_failed",
+        targetType: "auth",
+        metadata: {
+          email: maskEmail(normalizedEmail),
+          reason: "attempt_limit_reached",
+        },
+      });
       throw new VotingDatabaseError("rate_limited", "Too many attempts. Request a new code.");
     }
 
@@ -1791,6 +2014,16 @@ export const verifySignInCode = (db: Database, email: string, code: string): Ver
           WHERE id = ?
         `,
       ).run(now(), latestCode.id);
+
+      appendAuditLogEntry(db, {
+        actorPersonId: rosterMember.person_id,
+        action: "auth_sign_in_failed",
+        targetType: "auth",
+        metadata: {
+          email: maskEmail(normalizedEmail),
+          reason: "invalid_code",
+        },
+      });
 
       throw new VotingDatabaseError("invalid_code", "That code could not be verified.");
     }
@@ -1807,6 +2040,16 @@ export const verifySignInCode = (db: Database, email: string, code: string): Ver
       timestamp,
       latestCode.id,
     );
+    appendAuditLogEntry(db, {
+      actorPersonId: person.id,
+      action: "auth_sign_in_succeeded",
+      targetType: "session",
+      targetId: session.id,
+      metadata: {
+        email: maskEmail(normalizedEmail),
+      },
+      createdAt: timestamp,
+    });
 
     return {
       authenticated: true,
@@ -1817,6 +2060,15 @@ export const verifySignInCode = (db: Database, email: string, code: string): Ver
 
 export const signOut = (db: Database, sessionId: string | null): SignOutResponse => {
   if (sessionId) {
+    const session = loadSession(db, sessionId);
+    if (session) {
+      appendAuditLogEntry(db, {
+        actorPersonId: session.personId,
+        action: "auth_signed_out",
+        targetType: "session",
+        targetId: session.id,
+      });
+    }
     db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
   }
 
@@ -1903,6 +2155,110 @@ export const getAutomaticAiPolicyBuilderStatus = (db: Database): PropositionAiPo
     nextPublishAt,
     canPublishNow: activePolicies.length < AI_AUTOPUBLISH_LIMIT,
     waitingReason: nextSourcePropositions.length < 2 ? "Need at least two closed propositions to synthesize the next policy." : null,
+  };
+};
+
+const toSecurityControl = (
+  key: string,
+  label: string,
+  status: SecurityControlStatus,
+  detail: string,
+): SecurityStatusResponse["controls"][number] => ({
+  key,
+  label,
+  status,
+  detail,
+});
+
+export const getSecurityStatus = (db: Database): SecurityStatusResponse => {
+  syncExpiredPropositions(db);
+  purgeExpiredSessions(db);
+
+  const developmentAuthEnabled = isDevelopmentAuthEnabled();
+  const emailDeliveryMode = getEmailDeliveryMode();
+  const usingDefaultOtpPepper = OTP_PEPPER === "better-gov-local-dev-pepper";
+  const usingLocalSqlite = DEFAULT_DB_PATH.endsWith(".sqlite") || DEFAULT_DB_PATH.endsWith(".db");
+  const nowIso = now();
+
+  return {
+    generatedAt: nowIso,
+    sessionTtlHours: Math.round(SESSION_TTL_MS / (60 * 60 * 1000)),
+    otpTtlMinutes: Math.round(OTP_TTL_MS / (60 * 1000)),
+    otpMaxFailedAttempts: OTP_MAX_FAILED_ATTEMPTS,
+    propositionSubmissionLimitPerPerson: PROPOSITION_SUBMISSION_LIMIT_PER_PERSON,
+    propositionSubmissionLimitPerIp: PROPOSITION_SUBMISSION_LIMIT_PER_IP,
+    controls: [
+      toSecurityControl(
+        "vote_integrity",
+        "Database-enforced vote integrity",
+        "active",
+        "Each vote is unique per person and proposition, and the duplicate-vote rule is enforced at the database layer.",
+      ),
+      toSecurityControl(
+        "otp_auth",
+        "Hashed one-time sign-in codes",
+        "active",
+        `Verification codes are hashed, expire after ${Math.round(OTP_TTL_MS / 60000)} minutes, and lock after ${OTP_MAX_FAILED_ATTEMPTS} failed attempts.`,
+      ),
+      toSecurityControl(
+        "session_expiry",
+        "Expiring sessions",
+        "active",
+        `Sessions expire after ${Math.round(SESSION_TTL_MS / (60 * 60 * 1000))} hours of inactivity, and a new sign-in replaces older sessions for the same account.`,
+      ),
+      toSecurityControl(
+        "audit_trail",
+        "Append-only audit trail",
+        "active",
+        "Sign-in requests, sign-in outcomes, proposition creation, and votes are recorded in an append-only audit table.",
+      ),
+      toSecurityControl(
+        "published_integrity",
+        "Published proposition integrity",
+        "active",
+        "Published propositions are created server-side and there is currently no public edit endpoint that can mutate an open proposition after publication.",
+      ),
+      toSecurityControl(
+        "account_source",
+        "University account source",
+        developmentAuthEnabled ? "warning" : "active",
+        developmentAuthEnabled
+          ? "Development auto-provisioning is enabled for allowed-domain emails. Production must use a real roster import without automatic account creation."
+          : "Accounts are matched against the university roster before a session is issued.",
+      ),
+      toSecurityControl(
+        "email_delivery",
+        "Email delivery setup",
+        emailDeliveryMode === "resend" ? "active" : "warning",
+        emailDeliveryMode === "resend"
+          ? "Verification codes are delivered through a configured mail provider."
+          : "Verification email delivery is still in development mode. Production needs a verified sender and a real mail provider.",
+      ),
+      toSecurityControl(
+        "secret_hardening",
+        "Secrets and deployment hardening",
+        usingDefaultOtpPepper || usingLocalSqlite ? "warning" : "active",
+        usingDefaultOtpPepper || usingLocalSqlite
+          ? "A default OTP pepper or local SQLite storage is still present. Production needs rotated secrets and a managed database."
+          : "Non-default secret material is configured and the database is not using the local development SQLite path.",
+      ),
+      toSecurityControl(
+        "session_cookie",
+        "Cookie transport protection",
+        COOKIE_SECURE || process.env.NODE_ENV !== "production" ? "active" : "warning",
+        COOKIE_SECURE
+          ? "Session cookies are httpOnly, SameSite=Lax, and Secure."
+          : "Session cookies are httpOnly and SameSite=Lax. Secure cookies are enforced in production deployments.",
+      ),
+    ],
+    metrics: {
+      activeRosterMembers: countRosterMembersByStatus(db, "active"),
+      activeSessions: countRowsForTable(db, "sessions"),
+      auditEventsLast24Hours: countRecentAuditEvents(db, new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+      votesRecorded: countRowsForTable(db, "votes"),
+      openPropositions: countPoliciesByStatus(db, "open"),
+      closedPropositions: countPoliciesByStatus(db, "closed"),
+    },
   };
 };
 
@@ -2128,6 +2484,18 @@ export const createProposition = (
     if (!isAiAutomation) {
       db.prepare(propositionSubmissionLogSql).run(session.person.id, ipHash, timestamp);
     }
+    appendAuditLogEntry(db, {
+      actorPersonId: session.person.id,
+      action: "proposition_created",
+      targetType: "proposition",
+      targetId: propositionId,
+      ipHash,
+      metadata: {
+        title: validated.title,
+        aiGenerated: isAiAutomation,
+      },
+      createdAt: timestamp,
+    });
     recordVoteHistoryPoint(
       db,
       propositionId,
@@ -2224,6 +2592,16 @@ export const submitVote = (
 
     db.prepare(voteSql).run(propositionId, session.person.id, choice, existingVote?.createdAt ?? timestamp, timestamp);
     const counts = loadVoteCounts(db, propositionId);
+    appendAuditLogEntry(db, {
+      actorPersonId: session.person.id,
+      action: existingVote ? "vote_updated" : "vote_created",
+      targetType: "proposition",
+      targetId: propositionId,
+      metadata: {
+        choice,
+      },
+      createdAt: timestamp,
+    });
     recordVoteHistoryPoint(
       db,
       propositionId,

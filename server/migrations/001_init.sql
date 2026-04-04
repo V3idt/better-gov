@@ -15,6 +15,17 @@ CREATE TABLE IF NOT EXISTS sessions (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS audit_log_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_person_id TEXT REFERENCES people(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id TEXT,
+  ip_hash TEXT,
+  metadata_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS policies (
   id TEXT PRIMARY KEY,
   slug TEXT NOT NULL,
@@ -125,6 +136,13 @@ CREATE TABLE IF NOT EXISTS email_verification_codes (
   FOREIGN KEY (university_email) REFERENCES roster_members(university_email) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS auth_request_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  university_email TEXT NOT NULL,
+  ip_hash TEXT,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ai_explanations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   policy_id TEXT NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
@@ -168,6 +186,10 @@ CREATE TABLE IF NOT EXISTS ai_policy_drafts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_person_id ON sessions(person_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log_entries(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor_created_at ON audit_log_entries(actor_person_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action_created_at ON audit_log_entries(action, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_votes_policy_id ON votes(policy_id);
 CREATE INDEX IF NOT EXISTS idx_votes_person_id ON votes(person_id);
 CREATE INDEX IF NOT EXISTS idx_proposition_details_order ON proposition_details(display_order);
@@ -180,6 +202,8 @@ CREATE INDEX IF NOT EXISTS idx_proposition_vote_totals_updated_at ON proposition
 CREATE INDEX IF NOT EXISTS idx_proposition_vote_history_policy_captured ON proposition_vote_history(policy_id, captured_at ASC);
 CREATE INDEX IF NOT EXISTS idx_roster_members_email ON roster_members(university_email);
 CREATE INDEX IF NOT EXISTS idx_email_codes_email_created ON email_verification_codes(university_email, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_auth_request_log_email_created ON auth_request_log(university_email, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_auth_request_log_ip_created ON auth_request_log(ip_hash, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_explanations_policy_role_provider ON ai_explanations(policy_id, audience_role, requested_provider);
 CREATE INDEX IF NOT EXISTS idx_ai_chat_answers_policy_role_provider ON ai_chat_answers(policy_id, audience_role, requested_provider);
 CREATE INDEX IF NOT EXISTS idx_ai_policy_drafts_policy_provider ON ai_policy_drafts(policy_id, requested_provider);

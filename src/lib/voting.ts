@@ -212,6 +212,33 @@ export type PropositionAiPolicyBuilderStatus = {
   waitingReason: string | null;
 };
 
+export type SecurityControlStatus = "active" | "warning";
+
+export type SecurityControl = {
+  key: string;
+  label: string;
+  status: SecurityControlStatus;
+  detail: string;
+};
+
+export type SecurityStatusResponse = {
+  generatedAt: string;
+  sessionTtlHours: number;
+  otpTtlMinutes: number;
+  otpMaxFailedAttempts: number;
+  propositionSubmissionLimitPerPerson: number;
+  propositionSubmissionLimitPerIp: number;
+  controls: SecurityControl[];
+  metrics: {
+    activeRosterMembers: number;
+    activeSessions: number;
+    auditEventsLast24Hours: number;
+    votesRecorded: number;
+    openPropositions: number;
+    closedPropositions: number;
+  };
+};
+
 export type AuthenticatedSessionResponse = {
   authenticated: true;
   session: SessionRecord;
