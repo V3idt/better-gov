@@ -11,7 +11,7 @@ import {
 } from "@/lib/voting-api";
 import { formatSupportPercent } from "@/lib/voting";
 
-type Tab = "all" | "for_you" | "closing" | "draft";
+type Tab = "all" | "for_you" | "closing" | "newest";
 type SortMode = "published" | "support-asc" | "support-desc";
 
 const LeaderboardTable = () => {
@@ -35,10 +35,10 @@ const LeaderboardTable = () => {
 
     return propositions.filter((item) => {
       const matchesTab =
-        (activeTab === "all" && item.status !== "draft") ||
-        (activeTab === "for_you" && item.status !== "draft") ||
+        activeTab === "all" ||
+        activeTab === "for_you" ||
         (activeTab === "closing" && item.status === "closing_soon") ||
-        (activeTab === "draft" && item.status === "draft");
+        activeTab === "newest";
 
       const matchesSearch =
         item.title.toLowerCase().includes(query) ||
@@ -52,6 +52,19 @@ const LeaderboardTable = () => {
   const sorted = useMemo(() => {
     if (activeTab === "for_you") {
       return filtered;
+    }
+
+    if (activeTab === "newest") {
+      return [...filtered].sort((left, right) => {
+        const leftPublished = new Date(left.postedAt).getTime();
+        const rightPublished = new Date(right.postedAt).getTime();
+
+        if (leftPublished === rightPublished) {
+          return left.title.localeCompare(right.title);
+        }
+
+        return rightPublished - leftPublished;
+      });
     }
 
     return [...filtered].sort((left, right) => {
@@ -124,7 +137,7 @@ const LeaderboardTable = () => {
             activeTab === "all" ? "border-b border-foreground text-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          All Open ({propositions.filter((item) => item.status !== "draft").length})
+          All Open ({propositions.length})
         </button>
         {isAuthenticated ? (
           <button
@@ -149,12 +162,12 @@ const LeaderboardTable = () => {
           Closing Soon ({propositions.filter((item) => item.status === "closing_soon").length})
         </button>
         <button
-          onClick={() => setActiveTab("draft")}
+          onClick={() => setActiveTab("newest")}
           className={`pb-1 font-mono transition-colors ${
-            activeTab === "draft" ? "border-b border-foreground text-foreground" : "text-muted-foreground hover:text-foreground"
+            activeTab === "newest" ? "border-b border-foreground text-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          Draft ({propositions.filter((item) => item.status === "draft").length})
+          Newest ({propositions.length})
         </button>
       </div>
 
@@ -162,7 +175,7 @@ const LeaderboardTable = () => {
         <span>#</span>
         <span>Proposition</span>
         <div className="flex justify-end">
-          {activeTab === "for_you" ? (
+          {activeTab === "for_you" || activeTab === "newest" ? (
             <span className="text-xs uppercase tracking-wider text-muted-foreground">{supportSortLabel}</span>
           ) : (
             <Button

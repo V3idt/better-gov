@@ -1311,6 +1311,7 @@ const initializeDatabase = (db: Database) => {
   db.exec(MIGRATION_SQL);
   seedPropositions(db);
   seedRoster(db);
+  db.prepare(`UPDATE policies SET status = 'open', updated_at = ? WHERE status = 'draft'`).run(now());
 };
 
 const createSession = (db: Database, personId: string) => {

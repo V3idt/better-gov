@@ -372,7 +372,7 @@ Departments need enough scheduling flexibility to implement the rules without cr
     jurisdiction: "Board of Trustees",
     category: "Tuition & fees",
     title: "One-Year Tuition Freeze",
-    status: "Draft",
+    status: "Open",
     support: "59.4%",
     turnout: "9.6K votes",
     closesOn: "June 03, 2026",
