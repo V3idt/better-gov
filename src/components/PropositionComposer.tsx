@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import AccountDialog from "@/components/AccountDialog";
@@ -98,13 +98,6 @@ const PropositionComposer = () => {
     },
   });
 
-  useEffect(() => {
-    if (!open) {
-      setForm(createDefaultFormState());
-      createMutation.reset();
-    }
-  }, [createMutation, open]);
-
   const errorMessage =
     createMutation.error instanceof VotingApiError
       ? createMutation.error.message
@@ -121,6 +114,15 @@ const PropositionComposer = () => {
     setAccountDialogOpen(true);
   };
 
+  const handleComposerOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+
+    if (!nextOpen) {
+      setForm(createDefaultFormState());
+      createMutation.reset();
+    }
+  };
+
   return (
     <>
       <Button type="button" variant="outline" className={triggerButtonClass} onClick={handleOpen}>
@@ -130,7 +132,7 @@ const PropositionComposer = () => {
 
       <AccountDialog open={accountDialogOpen} onOpenChange={setAccountDialogOpen} />
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={handleComposerOpenChange}>
         <DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden border-border bg-background p-0 text-foreground sm:max-h-[min(88vh,820px)] sm:max-w-2xl">
           <DialogHeader className="space-y-3 border-b border-border px-6 pb-4 pt-6 text-left">
             <DialogTitle className="font-mono text-base uppercase tracking-[0.18em]">Post proposition</DialogTitle>
@@ -255,7 +257,7 @@ const PropositionComposer = () => {
                 )}
               </p>
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Button type="button" variant="outline" className={actionButtonClass} onClick={() => setOpen(false)}>
+                <Button type="button" variant="outline" className={actionButtonClass} onClick={() => handleComposerOpenChange(false)}>
                   Cancel
                 </Button>
                 <Button type="submit" variant="outline" disabled={createMutation.isPending} className={actionButtonClass}>
