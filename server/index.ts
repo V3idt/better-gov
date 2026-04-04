@@ -1,6 +1,7 @@
 import {
   buildClearSessionCookie,
   buildSessionCookie,
+  createProposition,
   getPropositionDetail,
   getSession,
   listPropositionHistory,
@@ -16,6 +17,7 @@ import {
 import { getPolicyExplanation } from "./ai.ts";
 import type {
   PropositionAiExplanationRequest,
+  CreatePropositionInput,
   RequestSignInCodeInput,
   VerifySignInCodeInput,
   VoteChoice,
@@ -41,6 +43,22 @@ const readSessionCookie = (request: Request) => {
 
   const match = cookieHeader.match(new RegExp(`(?:^|; )${SESSION_COOKIE_NAME}=([^;]+)`));
   return match ? decodeURIComponent(match[1]) : null;
+};
+
+const readClientAddress = (request: Request) => {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const firstAddress = forwarded
+      .split(",")
+      .map((part) => part.trim())
+      .find(Boolean);
+
+    if (firstAddress) {
+      return firstAddress;
+    }
+  }
+
+  return request.headers.get("x-real-ip");
 };
 
 const parseJson = async <T>(request: Request): Promise<T> => {
@@ -115,6 +133,25 @@ const server = Bun.serve({
 
       if (request.method === "GET" && url.pathname === "/api/propositions") {
         return json(listPropositions(db));
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/propositions") {
+        const body = await parseJson<CreatePropositionInput>(request);
+
+        if (
+          typeof body.title !== "string" ||
+          typeof body.category !== "string" ||
+          typeof body.scope !== "string" ||
+          typeof body.tldr !== "string" ||
+          typeof body.brief !== "string" ||
+          typeof body.closesAt !== "string" ||
+          !Array.isArray(body.bullets) ||
+          body.bullets.some((bullet) => typeof bullet !== "string")
+        ) {
+          throw new VotingDatabaseError("invalid_request", "Enter valid proposition details.");
+        }
+
+        return json(createProposition(db, readSessionCookie(request), body, readClientAddress(request)));
       }
 
       if (request.method === "GET" && url.pathname === "/api/propositions/history") {

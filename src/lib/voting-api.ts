@@ -1,4 +1,6 @@
 import type {
+  CreatePropositionInput,
+  CreatePropositionResponse,
   PropositionDetailResponse,
   PropositionAiExplanationRequest,
   PropositionAiExplanationResponse,
@@ -66,6 +68,12 @@ export const getSession = () => request<SessionResponse>("/me", { method: "GET" 
 export const listPropositions = () => request<PropositionListResponse>("/propositions", { method: "GET" });
 
 export const listPropositionHistory = () => request<PropositionHistoryResponse>("/propositions/history", { method: "GET" });
+
+export const createProposition = (input: CreatePropositionInput) =>
+  request<CreatePropositionResponse>("/propositions", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 
 export const getPropositionByPath = (path: string) =>
   request<PropositionDetailResponse>(`/propositions/by-path?path=${encodeURIComponent(path)}`, { method: "GET" });

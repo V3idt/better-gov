@@ -7,6 +7,8 @@ import { propositionSeeds } from "./proposition-seeds.ts";
 import type {
   AiAudienceRole,
   AiProviderPreference,
+  CreatePropositionInput,
+  CreatePropositionResponse,
   PropositionAiExplanation,
   Person,
   PropositionDetail,
@@ -39,6 +41,19 @@ const OTP_MAX_FAILED_ATTEMPTS = 5;
 const OTP_PEPPER = process.env.BETTER_GOV_OTP_PEPPER ?? "better-gov-local-dev-pepper";
 const ALLOWED_EMAIL_DOMAIN = (process.env.BETTER_GOV_ALLOWED_EMAIL_DOMAIN ?? "university.edu").toLowerCase();
 const CLOSING_SOON_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const PROPOSITION_MIN_CLOSE_OFFSET_MS = 60 * 60 * 1000;
+const PROPOSITION_MAX_CLOSE_OFFSET_MS = 180 * 24 * 60 * 60 * 1000;
+const PROPOSITION_MAX_TITLE_LENGTH = 120;
+const PROPOSITION_MAX_CATEGORY_LENGTH = 48;
+const PROPOSITION_MAX_SCOPE_LENGTH = 80;
+const PROPOSITION_MAX_TLDR_LENGTH = 280;
+const PROPOSITION_MAX_BULLET_LENGTH = 200;
+const PROPOSITION_MAX_BULLET_COUNT = 6;
+const PROPOSITION_MAX_BRIEF_LENGTH = 8_000;
+const PROPOSITION_SUBMISSION_WINDOW_MS = 24 * 60 * 60 * 1000;
+const PROPOSITION_SUBMISSION_LIMIT_PER_PERSON = 3;
+const PROPOSITION_SUBMISSION_LIMIT_PER_IP = 10;
+const RATE_LIMIT_PEPPER = process.env.BETTER_GOV_RATE_LIMIT_PEPPER ?? OTP_PEPPER;
 const rosterEmail = (localPart: string) => `${localPart}@${ALLOWED_EMAIL_DOMAIN}`;
 
 const ROSTER_MEMBERS = [
@@ -155,6 +170,10 @@ type AiExplanationRow = {
   updated_at: string;
 };
 
+type CountRow = {
+  total: number;
+};
+
 type VoteCounts = {
   approve: number;
   reject: number;
@@ -195,7 +214,39 @@ const now = () => new Date().toISOString();
 const toFutureIso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
 const randomId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
+const normalizeText = (value: string) => value.trim().replace(/\s+/g, " ");
 const hasText = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+
+const hashRateLimitValue = (value: string) =>
+  createHash("sha256")
+    .update(`${value}:${RATE_LIMIT_PEPPER}`)
+    .digest("hex");
+
+const normalizeBulletList = (value: string[]) => {
+  const unique = new Set<string>();
+
+  for (const item of value) {
+    const bullet = normalizeText(item);
+    if (!bullet) {
+      continue;
+    }
+
+    unique.add(bullet);
+  }
+
+  return [...unique];
+};
+
+const toSlug = (value: string) => {
+  const slug = normalizeText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+
+  return slug || randomId("proposition").replaceAll("_", "-");
+};
 
 const maskEmail = (value: string) => {
   const [localPart, domain] = normalizeEmail(value).split("@");
@@ -325,6 +376,13 @@ const propositionDetailSql = `
     display_order = excluded.display_order
 `;
 
+const propositionAuthorshipSql = `
+  INSERT INTO proposition_authorship (policy_id, person_id, created_at)
+  VALUES (?, ?, ?)
+  ON CONFLICT(policy_id) DO UPDATE SET
+    person_id = excluded.person_id
+`;
+
 const rosterMemberSql = `
   INSERT INTO roster_members (
     person_id,
@@ -371,6 +429,11 @@ const aiExplanationSql = `
     provider_used = excluded.provider_used,
     explanation_json = excluded.explanation_json,
     updated_at = excluded.updated_at
+`;
+
+const propositionSubmissionLogSql = `
+  INSERT INTO proposition_submission_log (person_id, ip_hash, created_at)
+  VALUES (?, ?, ?)
 `;
 
 const loadPerson = (db: Database, personId: string) => {
@@ -575,6 +638,32 @@ const loadPropositionReviewChecks = (db: Database, propositionId: string) =>
       .all(propositionId) as Array<PropositionReviewCheck>
   );
 
+const countRecentSubmissionsForPerson = (db: Database, personId: string, sinceIso: string) =>
+  (
+    db
+      .prepare(
+        `
+          SELECT COUNT(*) AS total
+          FROM proposition_submission_log
+          WHERE person_id = ? AND created_at >= ?
+        `,
+      )
+      .get(personId, sinceIso) as CountRow
+  ).total;
+
+const countRecentSubmissionsForIp = (db: Database, ipHash: string, sinceIso: string) =>
+  (
+    db
+      .prepare(
+        `
+          SELECT COUNT(*) AS total
+          FROM proposition_submission_log
+          WHERE ip_hash = ? AND created_at >= ?
+        `,
+      )
+      .get(ipHash, sinceIso) as CountRow
+  ).total;
+
 const loadRosterMemberByEmail = (db: Database, email: string) => {
   const row = db
     .prepare(
@@ -617,6 +706,42 @@ const loadLatestEmailCode = (db: Database, email: string) => {
     .get(normalizeEmail(email)) as EmailCodeRow | undefined;
 
   return row ?? null;
+};
+
+const loadNextDisplayOrder = (db: Database) =>
+  (
+    db
+      .prepare(
+        `
+          SELECT COALESCE(MAX(display_order), 0) + 1 AS total
+          FROM proposition_details
+        `,
+      )
+      .get() as CountRow
+  ).total;
+
+const generateUniquePropositionSlug = (db: Database, jurisdictionSlug: string, title: string) => {
+  const baseSlug = toSlug(title);
+  let slug = baseSlug;
+  let suffix = 2;
+
+  while (
+    db
+      .prepare(
+        `
+          SELECT 1
+          FROM policies
+          WHERE jurisdiction_slug = ? AND slug = ?
+          LIMIT 1
+        `,
+      )
+      .get(jurisdictionSlug, slug)
+  ) {
+    slug = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
+
+  return slug;
 };
 
 const propositionStatusForRow = (row: PropositionRow): PropositionStatus => {
@@ -1109,6 +1234,160 @@ export const getPropositionDetailById = (
       session ? loadVote(db, proposition.id, session.person.id) : null,
     ),
   };
+};
+
+const validateCreatePropositionInput = (input: CreatePropositionInput) => {
+  const title = normalizeText(input.title);
+  const category = normalizeText(input.category);
+  const scope = normalizeText(input.scope);
+  const tldr = normalizeText(input.tldr);
+  const brief = input.brief.trim();
+  const bullets = normalizeBulletList(input.bullets);
+  const closesAtMs = Date.parse(input.closesAt);
+
+  if (!title || title.length > PROPOSITION_MAX_TITLE_LENGTH) {
+    throw new VotingDatabaseError(
+      "invalid_request",
+      `Title is required and must be ${PROPOSITION_MAX_TITLE_LENGTH} characters or fewer.`,
+    );
+  }
+
+  if (!category || category.length > PROPOSITION_MAX_CATEGORY_LENGTH) {
+    throw new VotingDatabaseError(
+      "invalid_request",
+      `Category is required and must be ${PROPOSITION_MAX_CATEGORY_LENGTH} characters or fewer.`,
+    );
+  }
+
+  if (!scope || scope.length > PROPOSITION_MAX_SCOPE_LENGTH) {
+    throw new VotingDatabaseError(
+      "invalid_request",
+      `Scope is required and must be ${PROPOSITION_MAX_SCOPE_LENGTH} characters or fewer.`,
+    );
+  }
+
+  if (!tldr || tldr.length > PROPOSITION_MAX_TLDR_LENGTH) {
+    throw new VotingDatabaseError(
+      "invalid_request",
+      `tl;dr is required and must be ${PROPOSITION_MAX_TLDR_LENGTH} characters or fewer.`,
+    );
+  }
+
+  if (!brief || brief.length > PROPOSITION_MAX_BRIEF_LENGTH) {
+    throw new VotingDatabaseError(
+      "invalid_request",
+      `Full brief is required and must be ${PROPOSITION_MAX_BRIEF_LENGTH} characters or fewer.`,
+    );
+  }
+
+  if (bullets.length > PROPOSITION_MAX_BULLET_COUNT) {
+    throw new VotingDatabaseError(
+      "invalid_request",
+      `Use ${PROPOSITION_MAX_BULLET_COUNT} key points or fewer.`,
+    );
+  }
+
+  if (bullets.some((bullet) => bullet.length > PROPOSITION_MAX_BULLET_LENGTH)) {
+    throw new VotingDatabaseError(
+      "invalid_request",
+      `Each key point must be ${PROPOSITION_MAX_BULLET_LENGTH} characters or fewer.`,
+    );
+  }
+
+  if (Number.isNaN(closesAtMs)) {
+    throw new VotingDatabaseError("invalid_request", "Choose a valid closing time.");
+  }
+
+  const closeOffset = closesAtMs - Date.now();
+  if (closeOffset < PROPOSITION_MIN_CLOSE_OFFSET_MS) {
+    throw new VotingDatabaseError("invalid_request", "Closing time must be at least one hour in the future.");
+  }
+
+  if (closeOffset > PROPOSITION_MAX_CLOSE_OFFSET_MS) {
+    throw new VotingDatabaseError("invalid_request", "Closing time must be within the next 180 days.");
+  }
+
+  return {
+    title,
+    category,
+    scope,
+    tldr,
+    brief,
+    bullets,
+    closesAt: new Date(closesAtMs).toISOString(),
+  };
+};
+
+export const createProposition = (
+  db: Database,
+  sessionId: string | null,
+  input: CreatePropositionInput,
+  clientIpAddress: string | null,
+): CreatePropositionResponse => {
+  const session = requireSessionContext(db, sessionId);
+  const validated = validateCreatePropositionInput(input);
+  const ipHash = clientIpAddress ? hashRateLimitValue(clientIpAddress) : null;
+  const submissionWindowStart = new Date(Date.now() - PROPOSITION_SUBMISSION_WINDOW_MS).toISOString();
+
+  return db.transaction(() => {
+    const personSubmissionCount = countRecentSubmissionsForPerson(db, session.person.id, submissionWindowStart);
+    if (personSubmissionCount >= PROPOSITION_SUBMISSION_LIMIT_PER_PERSON) {
+      throw new VotingDatabaseError(
+        "rate_limited",
+        `You can submit up to ${PROPOSITION_SUBMISSION_LIMIT_PER_PERSON} propositions per day.`,
+      );
+    }
+
+    if (ipHash && countRecentSubmissionsForIp(db, ipHash, submissionWindowStart) >= PROPOSITION_SUBMISSION_LIMIT_PER_IP) {
+      throw new VotingDatabaseError("rate_limited", "Too many proposition submissions from this connection. Try again later.");
+    }
+
+    const timestamp = now();
+    const jurisdictionSlug = "campus";
+    const jurisdictionLabel = "Campus";
+    const slug = generateUniquePropositionSlug(db, jurisdictionSlug, validated.title);
+    const propositionId = `${jurisdictionSlug}:${slug}`;
+    const path = `/${jurisdictionSlug}/${slug}`;
+    const displayOrder = loadNextDisplayOrder(db);
+
+    db.prepare(policySql).run(
+      propositionId,
+      slug,
+      jurisdictionSlug,
+      validated.title,
+      "draft",
+      validated.closesAt,
+      path,
+      timestamp,
+      timestamp,
+    );
+
+    db.prepare(propositionDetailSql).run(
+      propositionId,
+      jurisdictionLabel,
+      validated.category,
+      session.person.displayName,
+      validated.scope,
+      validated.tldr,
+      timestamp,
+      validated.brief,
+      displayOrder,
+    );
+
+    validated.bullets.forEach((bullet, index) => {
+      db.prepare(
+        `
+          INSERT INTO proposition_bullets (policy_id, position, content)
+          VALUES (?, ?, ?)
+        `,
+      ).run(propositionId, index, bullet);
+    });
+
+    db.prepare(propositionAuthorshipSql).run(propositionId, session.person.id, timestamp);
+    db.prepare(propositionSubmissionLogSql).run(session.person.id, ipHash, timestamp);
+
+    return getPropositionDetailById(db, sessionId, propositionId);
+  })();
 };
 
 export const getCachedAiExplanation = (

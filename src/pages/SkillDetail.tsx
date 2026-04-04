@@ -540,14 +540,16 @@ const SkillDetail = () => {
                 <div className="mb-6 rounded-lg border border-border p-5">
                   <h3 className="mb-3 text-xs uppercase tracking-wider text-muted-foreground">tl;dr</h3>
                   <p className="mb-3 text-sm font-semibold text-foreground">{proposition.tldr}</p>
-                  <ul className="space-y-2">
-                    {proposition.bullets.map((bullet, index) => (
-                      <li key={index} className="flex gap-2 text-sm text-muted-foreground">
-                        <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-muted-foreground" />
-                        {bullet}
-                      </li>
-                    ))}
-                  </ul>
+                  {proposition.bullets.length > 0 ? (
+                    <ul className="space-y-2">
+                      {proposition.bullets.map((bullet, index) => (
+                        <li key={index} className="flex gap-2 text-sm text-muted-foreground">
+                          <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-muted-foreground" />
+                          {bullet}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
 
                 <div className="mb-4 flex items-center gap-2 border-b border-border pb-3 text-sm text-muted-foreground">
@@ -590,17 +592,23 @@ const SkillDetail = () => {
 
                 <div>
                   <h3 className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Quick Read</h3>
-                  <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                    A fast read on rights impact, budget pressure, and delivery risk.
-                  </p>
-                  <div className="space-y-2">
-                    {proposition.reviewChecks.map((check) => (
-                      <div key={check.name} className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">{reviewLabel(check.name)}</span>
-                        <span className={`rounded px-2 py-0.5 text-xs font-mono ${statusColor(check.status)}`}>{check.status}</span>
+                  {proposition.reviewChecks.length > 0 ? (
+                    <>
+                      <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                        A fast read on rights impact, budget pressure, and delivery risk.
+                      </p>
+                      <div className="space-y-2">
+                        {proposition.reviewChecks.map((check) => (
+                          <div key={check.name} className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">{reviewLabel(check.name)}</span>
+                            <span className={`rounded px-2 py-0.5 text-xs font-mono ${statusColor(check.status)}`}>{check.status}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No quick read has been added yet.</p>
+                  )}
                 </div>
 
                 <div>

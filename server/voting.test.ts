@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  createProposition,
   getPropositionDetail,
   getSession,
   listPropositionHistory,
@@ -18,6 +19,15 @@ let dbPath = "";
 let db: ReturnType<typeof openVotingDatabase>;
 const configuredDomain = process.env.BETTER_GOV_ALLOWED_EMAIL_DOMAIN ?? "university.edu";
 const emailAtConfiguredDomain = (localPart: string) => `${localPart}@${configuredDomain}`;
+const propositionInput = (title: string) => ({
+  title,
+  category: "Student life",
+  scope: "University-wide",
+  tldr: "Keep the student center open later on weekdays.",
+  bullets: ["Extend access until midnight", "Add security staffing for late hours"],
+  brief: "Students need consistent evening study access.\n\nLater hours would reduce crowding and improve access for commuter students.",
+  closesAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+});
 
 beforeEach(() => {
   const tempDir = mkdtempSync(join(tmpdir(), "better-gov-"));
@@ -83,8 +93,41 @@ describe("voting database", () => {
     expect(detail.proposition.myVote?.choice).toBe("approve");
   });
 
+  it("creates a draft proposition for an authenticated campus account", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("leila.mekonnen"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("leila.mekonnen"), codeDelivery.devCode ?? "");
+
+    const created = createProposition(db, verified.session.id, propositionInput("Keep The Student Center Open Later"), "127.0.0.1");
+    const propositions = listPropositions(db);
+
+    expect(created.proposition.title).toBe("Keep The Student Center Open Later");
+    expect(created.proposition.status).toBe("draft");
+    expect(created.proposition.sponsor).toBe("Leila Mekonnen");
+    expect(created.proposition.path.startsWith("/campus/keep-the-student-center-open-later")).toBe(true);
+    expect(propositions.propositions.some((item) => item.id === created.proposition.id)).toBe(true);
+  });
+
+  it("rate limits repeated proposition submissions from the same account", async () => {
+    const codeDelivery = await requestSignInCode(db, emailAtConfiguredDomain("samuel.abebe"));
+    const verified = verifySignInCode(db, emailAtConfiguredDomain("samuel.abebe"), codeDelivery.devCode ?? "");
+
+    createProposition(db, verified.session.id, propositionInput("Proposal One"), "127.0.0.1");
+    createProposition(db, verified.session.id, propositionInput("Proposal Two"), "127.0.0.1");
+    createProposition(db, verified.session.id, propositionInput("Proposal Three"), "127.0.0.1");
+
+    expect(() =>
+      createProposition(db, verified.session.id, propositionInput("Proposal Four"), "127.0.0.1"),
+    ).toThrow(VotingDatabaseError);
+  });
+
   it("rejects anonymous voting attempts", () => {
     expect(() => submitVote(db, null, "campus:transparent-department-budgets", "approve")).toThrow(VotingDatabaseError);
+  });
+
+  it("rejects anonymous proposition submissions", () => {
+    expect(() => createProposition(db, null, propositionInput("Anonymous Proposal"), "127.0.0.1")).toThrow(
+      VotingDatabaseError,
+    );
   });
 
   it("rejects invalid verification codes", async () => {

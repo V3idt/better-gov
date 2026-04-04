@@ -21,7 +21,7 @@ const LeaderboardTable = () => {
   const propositions = propositionsQuery.data?.propositions ?? [];
   const filtered = propositions.filter((item) => {
     const matchesTab =
-      activeTab === "all" ||
+      (activeTab === "all" && item.status !== "draft") ||
       (activeTab === "closing" && item.status === "closing_soon") ||
       (activeTab === "draft" && item.status === "draft");
 

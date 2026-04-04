@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import PropositionComposer from "@/components/PropositionComposer";
 import Index from "./pages/Index.tsx";
 import Docs from "./pages/Docs.tsx";
 import Audits from "./pages/Audits.tsx";
@@ -17,12 +18,15 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/docs" element={<Docs />} />
-          <Route path="/audits" element={<Audits />} />
-          <Route path="/*" element={<SkillDetail />} />
-        </Routes>
+        <>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/docs" element={<Docs />} />
+            <Route path="/audits" element={<Audits />} />
+            <Route path="/*" element={<SkillDetail />} />
+          </Routes>
+          <PropositionComposer />
+        </>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

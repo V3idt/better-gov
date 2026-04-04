@@ -20,10 +20,11 @@ This file tracks development shortcuts and security-sensitive setup that must be
 
 ## Data Integrity
 
-- Replace seeded proposition content with authenticated creation and editing flows.
 - Replace the seeded university roster with a real import or sync pipeline.
 - Add audit logs for sign-in, proposition changes, vote attempts, and result publication.
 - Define the final rule for whether votes are secret, recoverable, or admin-visible.
+- Add moderation or review states before user-submitted draft propositions can open for voting.
+- Add edit rules and immutable snapshots so propositions cannot be silently changed after voting opens.
 
 ## Infrastructure
 
@@ -31,6 +32,7 @@ This file tracks development shortcuts and security-sensitive setup that must be
 - Add encrypted backups and restore testing.
 - Add monitoring for API errors, auth failures, and delivery failures.
 - Lock down environment variable handling in the deployment platform.
+- Put the API behind a trusted proxy or load balancer and use validated client IP forwarding before relying on IP-based submission throttling.
 
 ## Repo Hygiene
 

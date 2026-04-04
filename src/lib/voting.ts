@@ -97,6 +97,20 @@ export type PropositionDetailResponse = {
   proposition: PropositionDetail;
 };
 
+export type CreatePropositionInput = {
+  title: string;
+  category: string;
+  scope: string;
+  tldr: string;
+  bullets: string[];
+  brief: string;
+  closesAt: string;
+};
+
+export type CreatePropositionResponse = {
+  proposition: PropositionDetail;
+};
+
 export type PropositionAiExplanationRequest = {
   role: AiAudienceRole;
   provider?: AiProviderPreference;
