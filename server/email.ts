@@ -1,7 +1,14 @@
+import nodemailer from "nodemailer";
+
 const EMAIL_FROM = process.env.BETTER_GOV_EMAIL_FROM?.trim() ?? "";
 const EMAIL_REPLY_TO = process.env.BETTER_GOV_EMAIL_REPLY_TO?.trim() ?? "";
 const APP_URL = process.env.BETTER_GOV_APP_URL?.trim() ?? "http://127.0.0.1:8080";
 const RESEND_API_KEY = process.env.RESEND_API_KEY?.trim() ?? "";
+const SMTP_HOST = process.env.BETTER_GOV_SMTP_HOST?.trim() ?? "";
+const SMTP_PORT = Number(process.env.BETTER_GOV_SMTP_PORT?.trim() ?? "465");
+const SMTP_USER = process.env.BETTER_GOV_SMTP_USER?.trim() ?? "";
+const SMTP_PASS = process.env.BETTER_GOV_SMTP_PASS?.trim() ?? "";
+const SMTP_SECURE = (process.env.BETTER_GOV_SMTP_SECURE?.trim() ?? "1") !== "0";
 const DEV_AUTH_CODES = process.env.NODE_ENV !== "production" || process.env.BETTER_GOV_DEV_AUTH_CODES === "1";
 
 export const isDevelopmentAuthEnabled = () => DEV_AUTH_CODES;
@@ -20,6 +27,9 @@ export type EmailDeliveryResult =
     }
   | {
       mode: "resend";
+    }
+  | {
+      mode: "smtp";
     };
 
 const accountEmailHtml = (code: string) => `
@@ -46,17 +56,21 @@ export const getEmailDeliveryMode = () => {
     return "resend" as const;
   }
 
+  if (SMTP_HOST && SMTP_USER && SMTP_PASS && EMAIL_FROM) {
+    return "smtp" as const;
+  }
+
   return "development" as const;
 };
 
 export const assertEmailDeliveryConfigured = () => {
-  if (getEmailDeliveryMode() === "resend") {
+  if (getEmailDeliveryMode() !== "development") {
     return;
   }
 
   if (!DEV_AUTH_CODES) {
     throw new EmailDeliveryError(
-      "Email delivery is not configured. Set RESEND_API_KEY and BETTER_GOV_EMAIL_FROM, or enable BETTER_GOV_DEV_AUTH_CODES for local development.",
+      "Email delivery is not configured. Set Resend or SMTP credentials, or enable BETTER_GOV_DEV_AUTH_CODES for local development.",
     );
   }
 };
@@ -73,28 +87,58 @@ export const sendSignInCodeEmail = async (email: string, code: string): Promise<
     };
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  if (mode === "resend") {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: EMAIL_FROM,
+        to: [email],
+        ...(EMAIL_REPLY_TO ? { reply_to: EMAIL_REPLY_TO } : {}),
+        subject: "Your better-gov sign-in code",
+        html: accountEmailHtml(code),
+        text: `Your better-gov sign-in code is ${code}. It expires in 10 minutes.`,
+      }),
+    });
+
+    if (!response.ok) {
+      const message = await response.text().catch(() => "");
+      throw new EmailDeliveryError(`Email delivery failed${message ? `: ${message}` : "."}`);
+    }
+
+    return {
+      mode: "resend",
+    };
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_SECURE,
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS,
+      },
+    });
+
+    await transporter.sendMail({
       from: EMAIL_FROM,
-      to: [email],
-      ...(EMAIL_REPLY_TO ? { reply_to: EMAIL_REPLY_TO } : {}),
+      to: email,
+      ...(EMAIL_REPLY_TO ? { replyTo: EMAIL_REPLY_TO } : {}),
       subject: "Your better-gov sign-in code",
       html: accountEmailHtml(code),
       text: `Your better-gov sign-in code is ${code}. It expires in 10 minutes.`,
-    }),
-  });
-
-  if (!response.ok) {
-    const message = await response.text().catch(() => "");
-    throw new EmailDeliveryError(`Email delivery failed${message ? `: ${message}` : "."}`);
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "SMTP delivery failed.";
+    throw new EmailDeliveryError(`Email delivery failed: ${message}`);
   }
 
   return {
-    mode: "resend",
+    mode: "smtp",
   };
 };

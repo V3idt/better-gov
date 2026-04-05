@@ -70,13 +70,26 @@ For local development:
 In that mode, the app shows the OTP in the dialog and logs it in the API console instead of sending a real email.
 It also allows development sign-in for any email under `BETTER_GOV_ALLOWED_EMAIL_DOMAIN`, even if that account is not in the seeded roster.
 
-For real email delivery:
+For real email delivery with Resend:
 
 1. Set `RESEND_API_KEY`.
 2. Set `BETTER_GOV_EMAIL_FROM` to a verified sender identity in Resend.
 3. Optionally set `BETTER_GOV_EMAIL_REPLY_TO`.
 4. Set `BETTER_GOV_APP_URL` to the public app URL.
 5. Turn off `BETTER_GOV_DEV_AUTH_CODES`.
+
+For hackathon delivery with Gmail SMTP:
+
+1. Turn off `BETTER_GOV_DEV_AUTH_CODES`.
+2. Set `BETTER_GOV_EMAIL_FROM` to your Gmail address, for example `better-gov <youraddress@gmail.com>`.
+3. Set `BETTER_GOV_SMTP_HOST=smtp.gmail.com`.
+4. Set `BETTER_GOV_SMTP_PORT=465`.
+5. Set `BETTER_GOV_SMTP_SECURE=1`.
+6. Set `BETTER_GOV_SMTP_USER` to your Gmail address.
+7. Set `BETTER_GOV_SMTP_PASS` to a Google app password.
+8. Set `BETTER_GOV_APP_URL` to the public app URL.
+
+This is a hackathon fallback, not a production-grade mail setup. For a real deployment, use a dedicated sending domain and a transactional provider.
 
 If email delivery is not configured and dev-code mode is disabled, sign-in code requests will fail by design.
 
