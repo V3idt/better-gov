@@ -31,7 +31,9 @@ import type {
 
 const port = Number(process.env.BETTER_GOV_API_PORT ?? "8787");
 const db = openVotingDatabase();
-const AUTOMATIC_AI_PUBLISHING_ENABLED = process.env.BETTER_GOV_ENABLE_AI_AUTOPUBLISH === "1";
+const AUTOMATIC_AI_PUBLISHING_ENABLED =
+  process.env.BETTER_GOV_ENABLE_AI_AUTOPUBLISH === "1" &&
+  (process.env.NODE_ENV === "production" || process.env.BETTER_GOV_ENABLE_LOCAL_AI_AUTOPUBLISH === "1");
 
 const json = (body: unknown, status = 200, headers: HeadersInit = {}) =>
   new Response(JSON.stringify(body), {
