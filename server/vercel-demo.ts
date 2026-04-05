@@ -1,6 +1,5 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { propositionSeeds, type SeedProposition } from "./proposition-seeds.ts";
-import { EmailDeliveryError, getEmailDeliveryMode, sendSignInCodeEmail } from "./email.ts";
 import {
   propositionPathFromParts,
   selectAiDraftSourcePropositions,
@@ -58,6 +57,11 @@ const PROPOSITION_SUBMISSION_LIMIT_PER_PERSON = 3;
 const PROPOSITION_SUBMISSION_LIMIT_PER_IP = 10;
 const COOKIE_SECURE = process.env.NODE_ENV === "production" || process.env.BETTER_GOV_COOKIE_SECURE === "1";
 const AI_PROVIDER_USED = "fallback" as const;
+const EMAIL_FROM = process.env.BETTER_GOV_EMAIL_FROM?.trim() ?? "";
+const RESEND_API_KEY = process.env.RESEND_API_KEY?.trim() ?? "";
+const SMTP_HOST = process.env.BETTER_GOV_SMTP_HOST?.trim() ?? "";
+const SMTP_USER = process.env.BETTER_GOV_SMTP_USER?.trim() ?? "";
+const SMTP_PASS = process.env.BETTER_GOV_SMTP_PASS?.trim() ?? "";
 
 type DemoCodeRecord = {
   email: string;
@@ -194,6 +198,18 @@ const initialState = (): DemoState => ({
 
 const globalState = globalThis as typeof globalThis & {
   __betterGovVercelDemoState?: DemoState;
+};
+
+const getEmailDeliveryMode = () => {
+  if (RESEND_API_KEY && EMAIL_FROM) {
+    return "resend" as const;
+  }
+
+  if (SMTP_HOST && SMTP_USER && SMTP_PASS && EMAIL_FROM) {
+    return "smtp" as const;
+  }
+
+  return "development" as const;
 };
 
 const getState = () => {
@@ -802,6 +818,7 @@ const requestSignInCode = async (state: DemoState, emailInput: string, clientIp:
   const resendAvailableAt = new Date(now + OTP_RESEND_COOLDOWN_MS).toISOString();
 
   try {
+    const { sendSignInCodeEmail } = await import("./email.ts");
     const delivery = await sendSignInCodeEmail(email, code);
     state.codes.set(email, {
       email,
@@ -820,7 +837,7 @@ const requestSignInCode = async (state: DemoState, emailInput: string, clientIp:
       ...(delivery.mode === "development" ? { devCode: delivery.devCode } : {}),
     };
   } catch (error) {
-    const message = error instanceof EmailDeliveryError ? error.message : "Unable to deliver a sign-in code right now.";
+    const message = error instanceof Error ? error.message : "Unable to deliver a sign-in code right now.";
     throw new DemoApiError("delivery_failed", message);
   }
 };
