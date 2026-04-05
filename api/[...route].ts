@@ -1,25 +1,24 @@
-import { Hono } from "hono";
+import { createVercelDemoFetchHandler } from "../server/vercel-demo.ts";
 
-const app = new Hono();
 const USE_VERCEL_DEMO_BACKEND =
   process.env.BETTER_GOV_VERCEL_DEMO_BACKEND === "1" ||
   process.env.VERCEL === "1" ||
   typeof process.env.VERCEL_ENV === "string";
 
 let cachedHandler: ((request: Request) => Promise<Response>) | null = null;
+const vercelDemoHandler = createVercelDemoFetchHandler();
 
-app.all("*", async (context) => {
-  if (!cachedHandler) {
+export default {
+  async fetch(request: Request) {
     if (USE_VERCEL_DEMO_BACKEND) {
-      const { createVercelDemoFetchHandler } = await import("../server/vercel-demo.ts");
-      cachedHandler = createVercelDemoFetchHandler();
-    } else {
+      return vercelDemoHandler(request);
+    }
+
+    if (!cachedHandler) {
       const { createApiFetchHandler, getSharedDatabase } = await import("../server/app.ts");
       cachedHandler = createApiFetchHandler(getSharedDatabase());
     }
-  }
 
-  return cachedHandler(context.req.raw);
-});
-
-export default app;
+    return cachedHandler(request);
+  },
+};
