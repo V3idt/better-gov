@@ -23,10 +23,7 @@ const Index = () => {
           {/* Right: Description */}
           <div className="pt-2">
             <p className="text-xl md:text-2xl leading-relaxed text-muted-foreground font-light">
-              Tuition goes up. Library hours shrink. Shuttle routes change. Most people find out after the decision is already made.
-            </p>
-            <p className="mt-5 text-base leading-relaxed text-muted-foreground">
-              better-gov turns those closed-door choices into clear public propositions so the people affected can read them, question them, and vote before the outcome is locked in.
+              better-gov is a way to provide true democracy and allow people to gain control over descions that affect them everyday.
             </p>
           </div>
         </div>
